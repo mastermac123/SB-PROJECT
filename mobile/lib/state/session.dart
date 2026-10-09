@@ -81,6 +81,14 @@ class Session extends ChangeNotifier {
     }
   }
 
+  /// Re-read the server's settings (e.g. after email was set up on the laptop).
+  Future<void> reloadConfig() async {
+    try {
+      config = await api.config();
+      notifyListeners();
+    } catch (_) {/* keep the last copy */}
+  }
+
   Future<void> connect(String raw) async {
     final s = normalizeServer(raw);
     if (s.isEmpty) throw const ApiError('Enter the server link.');

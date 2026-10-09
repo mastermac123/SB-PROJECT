@@ -113,8 +113,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final err = _validateEmail();
     if (err != null) return setState(() => _error = err);
     setState(() => (_busy = true, _error = null));
+    final session = context.read<Session>();
     try {
-      await context.read<Session>().api.requestCode(_cleanEmail);
+      await session.api.requestCode(_cleanEmail);
+      await session.reloadConfig();
       if (mounted) {
         _code.clear();
         setState(() => (_codeStep = true, _busy = false));
