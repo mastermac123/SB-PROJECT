@@ -176,6 +176,58 @@ How RideSync saves on Google usage:
 
 The terminal shows which map services are active when RideSync starts.
 
+## 3e. Android and iPhone apps
+
+The apps contain all RideSync screens and talk to the same server as the website, so everyone shares the same rides, chats and accounts. The apps are built with **Capacitor** from this same code (`android/` and `ios/`).
+
+### Android: get the app (no Android Studio needed)
+
+GitHub builds the app automatically on every update to `main`.
+
+1. On your phone, open **github.com/mastermac123/SB-PROJECT → Releases → "Android app (latest)"** and download **RideSync.apk**. You must be signed in to GitHub if the repo is private.
+2. Open the file. Android asks to **allow installing from this source**; allow it, then tap **Install**.
+3. On first launch the app asks for a **server link**:
+   - Testing with your laptop: run `start.bat`, then `share.bat`, and paste the `https://….trycloudflare.com` link.
+   - Once RideSync is online: build the address into the app instead. In GitHub, go to **Settings → Secrets and variables → Actions → Variables** and add `RIDESYNC_SERVER_URL` = `https://your-server`. The next build connects automatically.
+4. Sign in with your `@vit.edu.in` email code.
+
+Change the server later from **Profile → Settings → Change server** (test builds only).
+
+### iPhone
+
+Apple only allows installing apps through the App Store or TestFlight, so an iPhone app needs:
+
+- an **Apple Developer account** ($99/year)
+- a **Mac** with Xcode, or a cloud Mac build service such as Codemagic
+
+Steps on a Mac:
+
+```bash
+VITE_API_URL=https://your-server npm run build:app
+npx cap open ios        # opens Xcode → pick your team → Product → Archive → TestFlight
+```
+
+Until then, iPhone users can use the website: open the link in Safari, tap **Share**, then **Add to Home Screen**.
+
+### What works in the app today
+
+Everything in the website works in the app:
+
+- login with an email code
+- offering, finding and booking rides
+- live GPS (while the app is open)
+- chat
+- UPI (opens GPay/PhonePe), call and SMS
+- photo upload
+- maps
+
+**Still to add for a store release:**
+
+- push notifications while the app is closed (needs a free Firebase project)
+- location sharing with the screen off
+- Sign in with Microsoft inside the app
+- store listings
+
 ## 4. Put it online
 
 The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.
