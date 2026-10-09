@@ -123,6 +123,9 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
   return places
 }
 
+/** "NH 48", "Western Express Highway", "SH-1"… — not useful as a pickup name. */
+const isHighway = (name: string) => /\b(N\.?H\.?|S\.?H\.?)[\s-]*\d+|national highway|state highway|expressway|highway|flyover|bypass/i.test(name)
+
 /** Coordinates for a Google suggestion the student picked. */
 export async function resolvePlace(placeId: string, sessionToken?: string): Promise<Place> {
   return googlePlaceDetails(placeId, sessionToken)
@@ -138,19 +141,34 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ name: 
       console.error('[ridesync] Google place name failed, using OpenStreetMap', (e as Error).message)
     }
   }
-  try {
-    if (maptiler()) {
-      const data = await getJson<{ features: MTFeature[] }>(`https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${env.maptilerKey}&limit=1&language=en`)
-      const f = data.features[0]
-      return f ? { name: f.text, area: short(f.place_name, f.text) } : null
+  if (maptiler()) {
+    try {
+      const data = await getJson<{ features: (MTFeature & { place_type?: string[] })[] }>(
+        `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${env.maptilerKey}&limit=5&language=en&types=poi,address,neighbourhood,locality`,
+      )
+      // Prefer a building/landmark, then a street address, then the neighbourhood — not a highway.
+      const rank = (f: { place_type?: string[]; text: string }) =>
+        (f.place_type?.includes('poi') ? 0 : f.place_type?.includes('address') ? 1 : 2) + (isHighway(f.text) ? 5 : 0)
+      const f = [...data.features].sort((x, y) => rank(x) - rank(y))[0]
+      if (f) return { name: f.text, area: short(f.place_name, f.text) }
+    } catch (e) {
+      console.error('[ridesync] MapTiler place name failed, using OpenStreetMap', (e as Error).message)
     }
+  }
+  try {
     const r = await getJson<{ name?: string; display_name?: string; address?: Record<string, string> }>(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${lat}&lon=${lng}`,
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`,
     )
     if (!r.display_name) return null
     const a = r.address ?? {}
-    const name = r.name || a.road || a.neighbourhood || a.suburb || r.display_name.split(',')[0]
-    return { name, area: [a.suburb || a.neighbourhood, a.city || a.town].filter(Boolean).join(', ') }
+    const area = a.neighbourhood || a.suburb || a.quarter || a.residential
+    const city = a.city || a.town || a.village || a.state_district
+    // Building or landmark names first; a bare highway name (e.g. "NH 48") is replaced by the area.
+    const building = a.building || a.amenity || a.house_name || a.shop || a.office || a.school || a.college || a.university || a.hospital || a.tourism || a.leisure
+    const own = r.name && r.name !== a.road && !isHighway(r.name) ? r.name : undefined
+    const street = a.road && !isHighway(a.road) ? [a.house_number, a.road].filter(Boolean).join(' ') : undefined
+    const name = building || own || street || (area ? `Near ${area}` : r.display_name.split(',')[0])
+    return { name, area: [area, city].filter((x) => x && !name.includes(x)).join(', ') }
   } catch {
     return null
   }

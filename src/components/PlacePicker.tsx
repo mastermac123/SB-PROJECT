@@ -1,8 +1,9 @@
-import { Building2, GraduationCap, LocateFixed, MapPin, Plane, Search, TrainFront, X } from 'lucide-react'
+import { ArrowLeft, Building2, GraduationCap, LocateFixed, MapPin, MapPinned, Plane, Search, TrainFront, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { searchPlaces } from '@/data/places'
 import type { Place } from '@/lib/types'
-import { ApiError, requestLocation, resolvePlaceRemote, searchPlacesRemote } from '@/services/api'
+import { ApiError, locatePrecise, resolvePlaceRemote, searchPlacesRemote } from '@/services/api'
+import { PinPicker } from './PinPicker'
 import { ModalSheet } from './Sheet'
 import { Field, IconButton, ListRow, Notice } from './ui'
 
@@ -31,6 +32,8 @@ export function PlacePicker({
   const [locError, setLocError] = useState<string | null>(null)
   const [resolving, setResolving] = useState<string | null>(null)
   const [pickError, setPickError] = useState<string | null>(null)
+  // Set when the student is fine-tuning the pin on the map.
+  const [pin, setPin] = useState<{ start?: { lat: number; lng: number }; accuracy?: number } | null>(null)
   const timer = useRef<number>(undefined)
   // One Google autocomplete session per search: typing + the final pick are billed as one lookup.
   const session = useRef<string>(newSession())
@@ -42,6 +45,7 @@ export function PlacePicker({
       setLocError(null)
       setPickError(null)
       setResolving(null)
+      setPin(null)
       session.current = newSession()
     }
   }, [open])
@@ -70,7 +74,9 @@ export function PlacePicker({
     setLocating(true)
     setLocError(null)
     try {
-      onPick(await requestLocation())
+      // GPS (or Wi-Fi on laptops) can be tens of metres off: confirm the spot on the map.
+      const p = await locatePrecise()
+      setPin({ start: { lat: p.lat, lng: p.lng }, accuracy: p.accuracy })
     } catch (e) {
       setLocError(e instanceof ApiError ? e.message : 'Couldn’t get your location.')
     } finally {
@@ -92,6 +98,23 @@ export function PlacePicker({
     } finally {
       setResolving(null)
     }
+  }
+
+  if (pin) {
+    return (
+      <ModalSheet open={open} onClose={onClose} title={title}>
+        <div className="stack gap-3">
+          <div>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPin(null)}>
+              <span className="btn__label">
+                <ArrowLeft /> Back to search
+              </span>
+            </button>
+          </div>
+          <PinPicker title={title} start={pin.start} accuracy={pin.accuracy} onConfirm={onPick} />
+        </div>
+      </ModalSheet>
+    )
   }
 
   return (
@@ -116,7 +139,8 @@ export function PlacePicker({
         <div className="list">
           {!q && (
             <>
-              <ListRow icon={<LocateFixed />} title={locating ? 'Finding your location…' : 'Use current location'} subtitle="Uses your device’s GPS" onClick={useLocation} chevron={false} />
+              <ListRow icon={<LocateFixed />} title={locating ? 'Finding your location…' : 'Use current location'} subtitle="Uses your device’s location — then adjust the pin" onClick={useLocation} chevron={false} />
+              <ListRow icon={<MapPinned />} title="Choose on map" subtitle="Drag the map to your exact building or gate" onClick={() => setPin({})} chevron={false} />
               {locError && (
                 <div style={{ paddingBottom: 8 }}>
                   <Notice tone="warning" icon={<MapPin />} title={locError === 'Location permission denied' ? 'Location is blocked' : undefined}>

@@ -464,3 +464,40 @@ export function requestLocation(): Promise<Place> {
     )
   })
 }
+
+/**
+ * Best position in a few seconds: browsers often return a rough Wi-Fi/IP fix
+ * first and a sharper GPS one shortly after.
+ */
+export function locatePrecise(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  return new Promise((resolve, reject) => {
+    if (!('geolocation' in navigator)) return reject(new ApiError('validation', 'Location isn’t available on this device.'))
+    let best: GeolocationPosition | null = null
+    const finish = () => {
+      navigator.geolocation.clearWatch(id)
+      window.clearTimeout(t)
+      if (best) resolve({ lat: best.coords.latitude, lng: best.coords.longitude, accuracy: best.coords.accuracy })
+    }
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos
+        if (best.coords.accuracy <= 20) finish()
+      },
+      (err) => {
+        if (best) return finish()
+        navigator.geolocation.clearWatch(id)
+        window.clearTimeout(t)
+        reject(new ApiError('validation', err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Couldn’t get your location. Try again.'))
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    )
+    const t = window.setTimeout(() => {
+      if (best) finish()
+    }, 6000)
+  })
+}
+
+/** Name for a spot on the map (prefers buildings and landmarks). */
+export async function reversePlace(lat: number, lng: number): Promise<{ name: string; area: string }> {
+  return get<{ name: string; area: string }>(`/places/reverse?lat=${lat}&lng=${lng}`)
+}

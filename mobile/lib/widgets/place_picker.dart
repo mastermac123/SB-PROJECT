@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../api/models.dart';
@@ -10,6 +9,7 @@ import '../data/places.dart';
 import '../state/session.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'pin_picker.dart';
 
 /// Full-screen search for a place: popular VIT places, server search and GPS.
 Future<Place?> pickPlace(BuildContext context, {required String title}) =>
@@ -76,30 +76,23 @@ class _PlacePickerState extends State<_PlacePicker> {
     }
   }
 
+  /// GPS → then let the student fine-tune the pin on their building (GPS can be tens of metres off).
   Future<void> _useLocation() async {
     setState(() => (_locating = true, _error = null));
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) throw 'Turn on Location on your phone, then try again.';
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        throw 'Location permission is off. Allow it for RideSync in your phone’s Settings, or pick a place from the list.';
-      }
-      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)));
-      var name = 'Current location';
-      var area = '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+      final pos = await preciseLocation();
       if (!mounted) return;
-      try {
-        final r = await context.read<Session>().api.reverse(pos.latitude, pos.longitude);
-        name = r.name;
-        area = r.area;
-      } catch (_) {}
-      if (mounted) {
-        Navigator.pop(context, Place(id: 'here-${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}', name: name, area: area, lat: pos.latitude, lng: pos.longitude, kind: 'custom'));
-      }
+      setState(() => _locating = false);
+      final p = await pickOnMap(context, title: widget.title, start: LatLngPoint(pos.latitude, pos.longitude), accuracy: pos.accuracy);
+      if (p != null && mounted) Navigator.pop(context, p);
     } catch (e) {
-      if (mounted) setState(() => (_error = e is String ? e : 'Couldn’t get your location. Try again.', _locating = false));
+      if (mounted) setState(() => (_error = e is String ? e : 'Couldn’t get your location. Try again, or choose on the map.', _locating = false));
     }
+  }
+
+  Future<void> _chooseOnMap() async {
+    final p = await pickOnMap(context, title: widget.title);
+    if (p != null && mounted) Navigator.pop(context, p);
   }
 
   @override
@@ -143,8 +136,15 @@ class _PlacePickerState extends State<_PlacePicker> {
               ListTile(
                 leading: const CircleAvatar(backgroundColor: RS.primary50, child: Icon(Icons.my_location, color: RS.primary)),
                 title: Text(_locating ? 'Finding your location…' : 'Use current location', style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Uses your phone’s GPS'),
+                subtitle: const Text('Uses your phone’s GPS — then adjust the pin'),
                 onTap: _locating ? null : _useLocation,
+              ),
+            if (_q.text.isEmpty)
+              ListTile(
+                leading: const CircleAvatar(backgroundColor: RS.sunken, child: Icon(Icons.pin_drop_outlined, color: RS.ink700)),
+                title: const Text('Choose on map', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Drag the map to your exact building or gate'),
+                onTap: _chooseOnMap,
               ),
             if (_q.text.isEmpty) const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: SectionTitle('Popular with VIT students')),
             for (final p in local) _row(p),
