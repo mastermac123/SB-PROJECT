@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, BadgeCheck, Mail, MailCheck, ShieldCheck, Terminal } from 'lucide-react'
+import { ArrowRight, BadgeCheck, CarFront, IndianRupee, Mail, MailCheck, Search, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
@@ -71,9 +71,6 @@ export function Landing() {
     <div className="landing">
       <header className="landing__top">
         <Logo height={30} />
-        <button className="btn btn--ghost btn--sm only-desktop" onClick={() => nav('/login')}>
-          <span className="btn__label">Log in</span>
-        </button>
       </header>
       <main className="landing__main">
         <div className="landing__art">
@@ -82,32 +79,30 @@ export function Landing() {
         <div className="landing__copy">
           <span className="badge badge--verified" style={{ alignSelf: 'flex-start' }}>
             <BadgeCheck />
-            Only for @{domain} students
+            Exclusively for Vidyalankar Institute of Technology
           </span>
           <h1 className="t-display landing__title">Smart rides. Shared journeys.</h1>
-          <p className="t-body-lg t-secondary">AI-powered carpooling built exclusively for the VIT community.</p>
-          <div className="landing__actions">
-            <Button size="lg" block onClick={() => nav('/login', { state: { mode: 'signup' } })}>
-              Create Account
-            </Button>
-            <Button size="lg" variant="secondary" block onClick={() => nav('/login')}>
-              Login
-            </Button>
-          </div>
-          <ul className="landing__points">
+          <p className="t-body-lg t-secondary landing__lede">Your campus carpool. Every driver and rider is a verified Vidyalankarite.</p>
+          <ul className="landing__chips" aria-label="What you can do">
             <li>
-              <strong>Offer a Ride</strong>
-              <span>Share empty seats on trips you’re already taking.</span>
+              <CarFront /> Offer a ride
             </li>
             <li>
-              <strong>Find a Ride</strong>
-              <span>AI matches you with VIT drivers heading your way.</span>
+              <Search /> Find a ride
             </li>
             <li>
-              <strong>Split the cost</strong>
-              <span>Fair cost-sharing, paid directly by UPI or cash. No surge pricing.</span>
+              <IndianRupee /> Split the cost
             </li>
           </ul>
+          <div className="landing__actions">
+            <Button size="lg" block onClick={() => nav('/login', { state: { mode: 'signup' } })}>
+              Create account
+            </Button>
+            <Button size="lg" variant="secondary" block onClick={() => nav('/login')}>
+              Log in
+            </Button>
+          </div>
+          <p className="t-caption t-muted landing__note">Sign in with your @{domain} email.</p>
         </div>
       </main>
     </div>

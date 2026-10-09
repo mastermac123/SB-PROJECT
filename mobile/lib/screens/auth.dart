@@ -292,40 +292,36 @@ extension on _LoginScreenState {
           child: ListView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 28), children: [
             Image.asset('assets/ridesync-logo.png', height: 32, alignment: Alignment.centerLeft),
             const SizedBox(height: 22),
-            const FadeSlideIn(child: RouteArt(height: 250)),
-            const SizedBox(height: 24),
-            FadeSlideIn(index: 1, child: Pill('Only for @$_domain students', icon: Icons.verified, color: RS.success, background: RS.success50)),
+            const FadeSlideIn(child: RouteArt(height: 260)),
+            const SizedBox(height: 22),
+            FadeSlideIn(index: 1, child: Align(alignment: Alignment.centerLeft, child: Pill('Exclusively for Vidyalankar Institute of Technology', icon: Icons.verified, color: RS.primary, background: RS.primary50))),
             const SizedBox(height: 12),
             FadeSlideIn(index: 2, child: Text('Smart rides.\nShared journeys.', style: RS.heading(34))),
             const SizedBox(height: 8),
-            const FadeSlideIn(index: 3, child: Text('AI-powered carpooling built exclusively for the VIT community.', style: TextStyle(color: RS.ink500, fontSize: 16, height: 1.4))),
+            const FadeSlideIn(index: 3, child: Text('Your campus carpool. Every driver and rider is a verified Vidyalankarite.', style: TextStyle(color: RS.ink500, fontSize: 16, height: 1.4))),
+            const SizedBox(height: 16),
+            FadeSlideIn(
+              index: 4,
+              child: Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final (icon, label) in const [(Icons.directions_car_rounded, 'Offer a ride'), (Icons.search_rounded, 'Find a ride'), (Icons.currency_rupee_rounded, 'Split the cost')])
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(color: RS.sunken, borderRadius: BorderRadius.circular(999)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(icon, size: 16, color: RS.primary),
+                      const SizedBox(width: 6),
+                      Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    ]),
+                  ),
+              ]),
+            ),
             const SizedBox(height: 22),
-            for (final (i, (icon, title, body)) in const [
-              (Icons.directions_car_rounded, 'Offer a ride', 'Share empty seats on trips you’re already taking.'),
-              (Icons.auto_awesome, 'Find a ride', 'AI matches you with VIT drivers heading your way.'),
-              (Icons.payments_outlined, 'Split the cost', 'Fair cost-sharing by UPI or cash. No surge pricing.'),
-            ].indexed)
-              FadeSlideIn(
-                index: 4 + i,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(children: [
-                    CircleAvatar(radius: 18, backgroundColor: RS.primary50, child: Icon(icon, color: RS.primary, size: 18)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text(body, style: const TextStyle(color: RS.ink500, fontSize: 13)),
-                      ]),
-                    ),
-                  ]),
-                ),
-              ),
-            const SizedBox(height: 12),
             if (session.startupError != null) ...[Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'), const SizedBox(height: 12)],
             LoadingButton(label: 'Create account', onPressed: _openLogin),
             const SizedBox(height: 10),
             LoadingButton(label: 'Log in', secondary: true, onPressed: _openLogin),
+            const SizedBox(height: 10),
+            Text('Sign in with your @$_domain email.', textAlign: TextAlign.center, style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
           ]),
         ),
       );

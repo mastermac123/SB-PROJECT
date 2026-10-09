@@ -12,7 +12,7 @@ export function AuthLayout({ children, top }: { children: ReactNode; top?: React
         <div className="stack gap-2">
           <p className="t-h2" style={{ maxWidth: 380 }}>Smart rides. Shared journeys.</p>
           <p className="t-body t-muted" style={{ maxWidth: 380 }}>
-            AI-powered carpooling built exclusively for the VIT community.
+            Your campus carpool. Every driver and rider is a verified Vidyalankarite.
           </p>
         </div>
       </aside>

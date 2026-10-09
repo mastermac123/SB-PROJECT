@@ -6,15 +6,26 @@
 .landing { min-height: 100dvh; background: var(--surface); display: flex; flex-direction: column; }
 .landing__top { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--space-4) + var(--safe-top)) var(--gutter) 0; max-width: 1200px; width: 100%; margin: 0 auto; }
 .landing__main { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter) calc(var(--space-6) + var(--safe-bottom)); }
-.landing__art { flex: 1; display: grid; place-items: center; min-height: 240px; margin: 0 calc(var(--gutter) * -1); background: radial-gradient(120% 80% at 50% 40%, var(--primary-25), var(--surface) 70%); }
+.landing__art { flex: 1; display: grid; place-items: center; min-height: 240px; margin: var(--space-3) 0 var(--space-5); }
+.landing__art svg { box-shadow: 0 12px 40px rgba(21, 24, 46, 0.12); }
 .landing__copy { display: flex; flex-direction: column; gap: var(--space-3); }
 .landing__title { font-size: 2.125rem; line-height: 2.5rem; max-width: 12ch; }
 .landing__actions { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4); }
 .landing__points { display: none; }
+.landing__lede { max-width: 34ch; }
+.landing__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0 0; padding: 0; list-style: none; }
+.landing__chips li {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 999px;
+  background: var(--surface-sunken); color: var(--ink-900);
+  font: 600 0.875rem/1 var(--font-body);
+}
+.landing__chips svg { width: 16px; height: 16px; color: var(--primary-600); }
+.landing__note { margin-top: calc(var(--space-1) * -1); }
 
 @media (min-width: 1024px) {
   .landing__main { flex-direction: row-reverse; align-items: center; gap: var(--space-16); padding-top: var(--space-8); }
-  .landing__art { flex: 1.1; margin: 0; border-radius: 32px; min-height: 560px; background: var(--bg-canvas); }
+  .landing__art { flex: 1.1; margin: 0; min-height: 0; }
   .landing__copy { flex: 1; gap: var(--space-4); max-width: 480px; }
   .landing__title { font-size: 3.25rem; line-height: 3.5rem; letter-spacing: -0.035em; }
   .landing__actions { flex-direction: row; }
