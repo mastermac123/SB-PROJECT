@@ -462,13 +462,26 @@ class RouteInfo {
   /// Extra minutes caused by traffic right now, and 'light' / 'moderate' / 'heavy' (live traffic only).
   final int trafficDelayMin;
   final String? traffic;
+  final List<TrafficSegment> segments;
   RouteInfo.fromJson(Map<String, dynamic> j)
       : coords = _maps(j['coords']).map(LatLngPoint.fromJson).toList(),
         distanceKm = _d(j['distanceKm']),
         durationMin = _i(j['durationMin']),
         source = _s(j['source']),
         trafficDelayMin = _i(j['trafficDelayMin']),
-        traffic = _ns(j['traffic']);
+        traffic = _ns(j['traffic']),
+        segments = _maps(j['segments']).map(TrafficSegment.fromJson).toList();
+}
+
+/// A slow ('slow'), heavy ('heavy') or standstill ('severe') stretch of a route, by point index.
+class TrafficSegment {
+  final int from;
+  final int to;
+  final String level;
+  TrafficSegment.fromJson(Map<String, dynamic> j)
+      : from = _i(j['from']),
+        to = _i(j['to']),
+        level = _s(j['level']);
 }
 
 /// Driving time between two points from the server, with live traffic when available.
@@ -476,10 +489,16 @@ class LiveEta {
   final int durationMin;
   final int trafficDelayMin;
   final String? traffic;
+
+  /// The live route and its slow stretches (asked for with route: true).
+  final List<LatLngPoint> coords;
+  final List<TrafficSegment> segments;
   LiveEta.fromJson(Map<String, dynamic> j)
       : durationMin = _i(j['durationMin']),
         trafficDelayMin = _i(j['trafficDelayMin']),
-        traffic = _ns(j['traffic']);
+        traffic = _ns(j['traffic']),
+        coords = _maps(j['coords']).map(LatLngPoint.fromJson).toList(),
+        segments = _maps(j['segments']).map(TrafficSegment.fromJson).toList();
 }
 
 class AppConfig {

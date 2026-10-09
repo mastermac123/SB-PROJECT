@@ -220,7 +220,7 @@ class _TripScreenState extends State<TripScreen> {
     final fresh = e != null && e.to.lat == to.lat && e.to.lng == to.lng && haversineKm(e.from, from) < 0.3 && DateTime.now().difference(e.at).inSeconds < 90;
     if (fresh) return;
     _etaBusy = true;
-    context.read<Session>().api.eta(from, to).then((r) {
+    context.read<Session>().api.eta(from, to, route: true).then((r) {
       if (mounted) setState(() => _eta = (eta: r, from: from, to: to, at: DateTime.now()));
     }).catchError((_) {}).whenComplete(() => _etaBusy = false);
   }
@@ -259,7 +259,7 @@ class _TripScreenState extends State<TripScreen> {
             detail: d,
             car: car,
             // Minus the distance already covered since the last check, so it keeps counting down.
-            liveEta: live == null ? null : (minutes: math.max(1, live.eta.durationMin - (haversineKm(live.from, from!) * 1.2 / 22 * 60).round()), traffic: live.eta.traffic, delay: live.eta.trafficDelayMin),
+            liveEta: live == null ? null : (minutes: math.max(1, live.eta.durationMin - (haversineKm(live.from, from!) * 1.2 / 22 * 60).round()), traffic: live.eta.traffic, delay: live.eta.trafficDelayMin, coords: live.eta.coords, segments: live.eta.segments),
           );
         },
       );
@@ -269,7 +269,7 @@ class _TripView extends StatelessWidget {
   const _TripView({required this.detail, required this.car, this.liveEta});
   final BookingDetail detail;
   final DriverLocation? car;
-  final ({int minutes, String? traffic, int delay})? liveEta;
+  final ({int minutes, String? traffic, int delay, List<LatLngPoint> coords, List<TrafficSegment> segments})? liveEta;
 
   static const _steps = ['pending', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'];
 
@@ -297,7 +297,9 @@ class _TripView extends StatelessWidget {
       topActions: [if (live && detail.isRider) _SosButton(detail: detail, car: carPoint)],
       map: (pad) => RideMap(
         padding: pad,
-        route: ride.route,
+        // The road ahead with live traffic colours when available, else the planned route.
+        route: live && (liveEta?.coords.length ?? 0) > 1 ? liveEta!.coords : ride.route,
+        traffic: live && (liveEta?.coords.length ?? 0) > 1 ? liveEta!.segments : const [],
         follow: live ? carPoint : null,
         pins: [
           MapPin(b.pickup.point, 'pickup', label: b.pickup.name, sublabel: b.status == 'driver_arriving' && eta != null ? '${detail.driver.firstName} in $eta min' : null),

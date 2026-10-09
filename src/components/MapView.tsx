@@ -27,7 +27,23 @@ export type MapMarker = {
   tone?: 'light' | 'moderate' | 'heavy'
 }
 
-export type MapRoute = { id: string; coords: LatLng[]; kind?: 'primary' | 'alt' | 'muted' }
+export type MapRoute = {
+  id: string
+  coords: LatLng[]
+  kind?: 'primary' | 'alt' | 'muted'
+  /** Live traffic on this route (index ranges into coords), drawn over it like Google Maps. */
+  traffic?: { from: number; to: number; level: 'slow' | 'heavy' | 'severe' }[]
+}
+
+/** Google Maps colours: clear = blue (the route itself), slow = orange, heavy = red, standstill = dark red. */
+export const TRAFFIC_COLOR = { slow: '#f29900', heavy: '#e3242b', severe: '#8b1a1a' } as const
+
+/** The coloured traffic stretches of a route, as separate lines. */
+export function trafficStretches(r: MapRoute): { coords: LatLng[]; color: string }[] {
+  return (r.traffic ?? [])
+    .map((t) => ({ coords: r.coords.slice(Math.max(0, t.from), Math.min(r.coords.length, t.to + 1)), color: TRAFFIC_COLOR[t.level] }))
+    .filter((x) => x.coords.length > 1)
+}
 
 export type MapPadding = { top?: number; bottom?: number; left?: number; right?: number }
 
@@ -63,7 +79,7 @@ function iconFor(m: MapMarker) {
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 export const ROUTE_STYLE = {
-  primary: { casing: { color: '#ffffff', weight: 9, opacity: 1 }, line: { color: '#5038e6', weight: 5, opacity: 1 } },
+  primary: { casing: { color: '#ffffff', weight: 9, opacity: 1 }, line: { color: '#1a73e8', weight: 5, opacity: 1 } },
   alt: { casing: { color: '#ffffff', weight: 7, opacity: 0.9 }, line: { color: '#a99ef2', weight: 4, opacity: 0.9 } },
   muted: { casing: { color: '#ffffff', weight: 7, opacity: 0.9 }, line: { color: '#9aa0b8', weight: 4, opacity: 0.9, dashArray: '2 8' } },
 }
@@ -213,7 +229,7 @@ function LeafletMap({
   }, [traffic])
 
   // Routes
-  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}`).join('|')
+  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}:${JSON.stringify(r.traffic ?? [])}`).join('|')
   useEffect(() => {
     const layer = routeLayer.current
     if (!layer) return
@@ -224,6 +240,9 @@ function LeafletMap({
       const pts = r.coords.map((c) => [c.lat, c.lng] as [number, number])
       const casing = L.polyline(pts, { ...style.casing, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer)
       const line = L.polyline(pts, { ...style.line, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer)
+      for (const t of trafficStretches(r)) {
+        L.polyline(t.coords.map((c) => [c.lat, c.lng] as [number, number]), { color: t.color, weight: style.line.weight, opacity: 1, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer)
+      }
       if (animateRoutes && (r.kind ?? 'primary') === 'primary') {
         for (const pl of [casing, line]) {
           const path = pl.getElement() as SVGPathElement | undefined

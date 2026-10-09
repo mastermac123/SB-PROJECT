@@ -36,7 +36,7 @@ function useLiveEta(from: LatLng | null, to: LatLng | null) {
   useEffect(() => {
     if (!due || !from || !to || busy.current) return
     busy.current = true
-    liveEta(from, to)
+    liveEta(from, to, { route: true })
       .then((r) => setEta({ ...r, from, to, at: Date.now() }))
       .catch(() => {})
       .finally(() => {
@@ -44,10 +44,10 @@ function useLiveEta(from: LatLng | null, to: LatLng | null) {
       })
   }, [due, from, to])
   if (!from || !to) return null
-  if (!fresh) return { minutes: etaMin(from, to), traffic: null as LiveEta['traffic'], delay: 0 }
+  if (!fresh) return { minutes: etaMin(from, to), traffic: null as LiveEta['traffic'], delay: 0, coords: undefined, segments: undefined }
   // Subtract the distance covered since the last check so the number keeps ticking down.
   const covered = Math.round(((haversineKm(eta.from, from) * 1.2) / 22) * 60)
-  return { minutes: Math.max(1, eta.durationMin - covered), traffic: eta.traffic, delay: eta.trafficDelayMin }
+  return { minutes: Math.max(1, eta.durationMin - covered), traffic: eta.traffic, delay: eta.trafficDelayMin, coords: eta.coords, segments: eta.segments }
 }
 
 export function LiveRide() {
@@ -121,7 +121,17 @@ export function LiveRide() {
   return (
     <MapScreen
       snaps={[0.46, 0.88]}
-      map={<MapView routes={[{ id: 'r', coords: ride.route, kind: 'primary' }]} markers={markers} fit={fit} padding={padding} follow="car" />}
+      map={
+        <MapView
+          routes={
+            // The road ahead with live traffic colours (blue = clear, orange/red = slow), else the planned route.
+            etaInfo?.coords && etaInfo.coords.length > 1 ? [{ id: 'r-live', coords: etaInfo.coords, kind: 'primary', traffic: etaInfo.segments }] : [{ id: 'r', coords: ride.route, kind: 'primary' }]
+          }           markers={markers}
+          fit={fit}
+          padding={padding}
+          follow="car"
+        />
+      }
       top={
         <>
           <BackButton surface to={`/trip/${booking.id}`} />

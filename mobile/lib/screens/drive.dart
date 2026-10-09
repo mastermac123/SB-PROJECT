@@ -103,6 +103,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
       map: (pad) => RideMap(
         padding: pad,
         route: _route?.coords ?? const [],
+        traffic: _route?.segments ?? const [],
         pins: [MapPin(_from.point, 'pickup', label: _from.name), if (_to != null) MapPin(_to!.point, 'drop', label: _to!.name)],
       ),
       footer: LoadingButton(label: _route == null ? 'Choose where you’re going' : 'Publish ride · ${money(_effectiveFare)}/seat', icon: Icons.check, loading: _publishing, onPressed: _route == null ? null : _publish),
@@ -282,7 +283,9 @@ class _DriveScreenState extends State<DriveScreen> {
     final api = context.read<Session>().api;
     final pending = d.bookings.where((b) => b.booking.status == 'pending').toList();
     final riders = d.bookings.where((b) => const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].contains(b.booking.status)).toList();
-    final bubble = eta == null ? null : etaPin(ride.route, eta);
+    // Upcoming or under way: today's live route, coloured by traffic like Google Maps.
+    final live = eta != null && eta.coords.length > 1;
+    final bubble = eta == null ? null : etaPin(live ? eta.coords : ride.route, eta);
     return MapSheetScaffold(
       initialSize: ride.status == 'in_progress' ? 0.42 : 0.55,
       minSize: 0.28,
@@ -290,7 +293,8 @@ class _DriveScreenState extends State<DriveScreen> {
       topActions: [FloatingMapButton(icon: Icons.ios_share_rounded, onTap: () => shareRide(context, ride, d.driver.name))],
       map: (pad) => RideMap(
         padding: pad,
-        route: ride.route,
+        route: live ? eta.coords : ride.route,
+        traffic: live ? eta.segments : const [],
         follow: ride.status == 'in_progress' ? me : null,
         pins: [
           MapPin(ride.origin.point, 'pickup', label: ride.origin.name, sublabel: 'Leave ${timeOf(ride.departAt)}'),

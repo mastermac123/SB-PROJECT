@@ -216,7 +216,7 @@ Trip details are shown **on the map**, like Ola and Uber:
 Add a free **TomTom** key to get real traffic, like Ola/Uber:
 
 - **Live ETAs:** "Arriving in 7 min" counts current traffic and shows "Heavy traffic · +6 min · live".
-- **Traffic on the map:** green, orange and red roads on the website and in the app, refreshed every 2 minutes.
+- **Google-style route colours:** the route is **blue** where traffic is clear, **orange** where it's slow, **red** where it's heavy and **dark red** at a standstill or closure. The other roads on the map also show traffic colours. Everything refreshes every 2 minutes.
 - **Traffic-aware routes:** when a driver offers a ride, the trip time uses expected traffic for that departure time.
 
 How to get the key:

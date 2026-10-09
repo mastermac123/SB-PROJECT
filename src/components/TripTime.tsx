@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { haversineKm } from '@/lib/geo'
 import type { LatLng } from '@/lib/types'
-import { liveEta, type LiveEta } from '@/services/api'
+import { liveEta, type LiveEta, type TrafficSegment } from '@/services/api'
 import type { MapMarker } from './MapView'
 
 type TripEtaInput = { from: LatLng; to: LatLng; departAt: string; plannedMin: number; distanceKm: number; live?: boolean }
-export type TripEta = { minutes: number; km: number; arrive: Date; traffic: LiveEta['traffic']; delay: number }
+export type TripEta = {
+  minutes: number
+  km: number
+  arrive: Date
+  traffic: LiveEta['traffic']
+  delay: number
+  /** Live route and its slow stretches (when the server has live traffic). */
+  coords?: LatLng[]
+  segments?: TrafficSegment[]
+}
 
 /**
  * Trip time and arrival, with live traffic when the trip starts within 90 minutes or is
@@ -21,7 +30,7 @@ export function useTripEta({ from, to, departAt, plannedMin, distanceKm, live }:
     if (!soon) return
     let stop = false
     const load = () =>
-      liveEta(from, to)
+      liveEta(from, to, { route: true })
         .then((r) => !stop && setEta(r))
         .catch(() => {})
     void load()
@@ -35,7 +44,7 @@ export function useTripEta({ from, to, departAt, plannedMin, distanceKm, live }:
 
   const minutes = eta?.durationMin ?? plannedMin
   const start = live ? Date.now() : Math.max(Date.now(), new Date(departAt).getTime())
-  return { minutes, km: eta?.distanceKm ?? distanceKm, arrive: new Date(start + minutes * 60_000), traffic: eta?.traffic ?? null, delay: eta?.trafficDelayMin ?? 0 }
+  return { minutes, km: eta?.distanceKm ?? distanceKm, arrive: new Date(start + minutes * 60_000), traffic: eta?.traffic ?? null, delay: eta?.trafficDelayMin ?? 0, coords: eta?.coords, segments: eta?.segments }
 }
 
 /** The point `frac` of the way along a route (by distance). */

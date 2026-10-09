@@ -365,11 +365,23 @@ export type RouteInfo = {
   /** Extra minutes caused by traffic right now (live traffic only). */
   trafficDelayMin?: number
   traffic?: TrafficLevel
+  /** Slow / heavy / standstill stretches by index into coords; the rest is clear. */
+  segments?: TrafficSegment[]
 }
-export type LiveEta = { durationMin: number; distanceKm: number; trafficDelayMin: number; traffic: TrafficLevel | null; source: RouteInfo['source'] }
+export type TrafficSegment = { from: number; to: number; level: 'slow' | 'heavy' | 'severe' }
+export type LiveEta = {
+  durationMin: number
+  distanceKm: number
+  trafficDelayMin: number
+  traffic: TrafficLevel | null
+  source: RouteInfo['source']
+  /** With { route: true } and live traffic: the current route and its slow stretches. */
+  coords?: { lat: number; lng: number }[]
+  segments?: TrafficSegment[]
+}
 /** Driving time between two points, including live traffic when the server has it. */
-export const liveEta = (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
-  get<LiveEta>(`/eta?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}`)
+export const liveEta = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, opts: { route?: boolean } = {}) =>
+  get<LiveEta>(`/eta?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}${opts.route ? '&route=1' : ''}`)
 
 export const searchPlacesRemote = (q: string, session?: string) =>
   get<Place[]>(`/places?q=${encodeURIComponent(q)}${session ? `&s=${encodeURIComponent(session)}` : ''}`)

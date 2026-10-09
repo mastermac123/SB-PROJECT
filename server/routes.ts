@@ -381,7 +381,15 @@ api.get(
     const to = { lat: n(req.query.toLat), lng: n(req.query.toLng) }
     if (![from.lat, from.lng, to.lat, to.lng].every(Number.isFinite)) throw new HttpError(400, 'Bad coordinates.')
     const r = await getRoute(from, to)
-    return { durationMin: r.durationMin, distanceKm: Math.round(r.distanceKm * 10) / 10, trafficDelayMin: r.trafficDelayMin ?? 0, traffic: r.traffic ?? null, source: r.source }
+    return {
+      durationMin: r.durationMin,
+      distanceKm: Math.round(r.distanceKm * 10) / 10,
+      trafficDelayMin: r.trafficDelayMin ?? 0,
+      traffic: r.traffic ?? null,
+      source: r.source,
+      // The live route with its slow stretches, so maps can colour it like Google Maps.
+      ...(req.query.route === '1' && r.source === 'tomtom' ? { coords: r.coords, segments: r.segments ?? [] } : {}),
+    }
   }),
 )
 

@@ -4,7 +4,7 @@ import { Box, Crosshair, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { drawRoute, glide } from '@/lib/glide'
 import type { LatLng } from '@/lib/types'
-import { markerHtml, ROUTE_STYLE, type MapViewProps } from './MapView'
+import { markerHtml, ROUTE_STYLE, trafficStretches, type MapViewProps } from './MapView'
 
 /**
  * Vector map (MapLibre GL): sharp at every zoom, 3D buildings when zoomed in, smooth
@@ -137,6 +137,9 @@ export default function VectorMap({
           paint: { 'line-color': s.line.color, 'line-width': s.line.weight + 1, 'line-opacity': s.line.opacity, ...(kind === 'muted' ? { 'line-dasharray': [0.5, 2.5] } : {}) },
         }, firstLabel)
       }
+      // Live traffic on the main route: orange / red / dark red stretches over the blue line.
+      m.addSource('rs-route-traffic', { type: 'geojson', data: EMPTY })
+      m.addLayer({ id: 'rs-route-traffic', type: 'line', source: 'rs-route-traffic', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': ROUTE_STYLE.primary.line.weight + 1 } }, firstLabel)
       setReady(true)
     })
     map.current = m
@@ -161,20 +164,29 @@ export default function VectorMap({
   }, [styleUrl, traffic])
 
   // Routes
-  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}`).join('|')
+  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}:${JSON.stringify(r.traffic ?? [])}`).join('|')
   useEffect(() => {
     const m = map.current
     if (!m || !ready) return
     stopDraw.current?.()
+    const trafficSrc = m.getSource('rs-route-traffic') as GeoJSONSource | undefined
+    const stretches = routes.filter((r) => (r.kind ?? 'primary') === 'primary').flatMap(trafficStretches)
+    const showTraffic = () => trafficSrc?.setData({ type: 'FeatureCollection', features: stretches.map((t) => ({ ...line(t.coords), properties: { color: t.color } })) })
+    trafficSrc?.setData(EMPTY)
     for (const kind of ['muted', 'alt', 'primary'] as const) {
       const list = routes.filter((r) => (r.kind ?? 'primary') === kind && r.coords.length > 1)
       const src = m.getSource(`rs-route-${kind}`) as GeoJSONSource | undefined
       if (!src) continue
       if (kind === 'primary' && animateRoutes && list.length === 1) {
         // The main route draws itself from start to destination.
-        stopDraw.current = drawRoute(list[0].coords, (partial) => src.setData(line(partial)))
+        // Traffic colours appear once the route has finished drawing.
+        stopDraw.current = drawRoute(list[0].coords, (partial) => {
+          src.setData(line(partial))
+          if (partial.length === list[0].coords.length) showTraffic()
+        })
       } else {
         src.setData({ type: 'FeatureCollection', features: list.map((r) => line(r.coords)) })
+        if (kind === 'primary') showTraffic()
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,10 +310,11 @@ export default function VectorMap({
       )}
       {traffic && ready && (
         <div className="vmap-legend" aria-label="Traffic colours" style={{ bottom: (padding?.bottom ?? 0) + 16 }}>
-          <span>Traffic</span>
-          <i style={{ background: '#2fbf71' }} /> Fast
-          <i style={{ background: '#ffa62b' }} /> Slow
-          <i style={{ background: '#e5383b' }} /> Jam
+          <span>Route</span>
+          <i style={{ background: '#1a73e8' }} /> Clear
+          <i style={{ background: '#f29900' }} /> Slow
+          <i style={{ background: '#e3242b' }} /> Heavy
+          <i style={{ background: '#8b1a1a' }} /> Standstill
         </div>
       )}
     </div>

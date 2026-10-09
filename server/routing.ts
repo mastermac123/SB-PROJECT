@@ -2,7 +2,7 @@ import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '..
 import type { LatLng } from '../src/lib/types'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
-import { tomtomConfigured, tomtomRoute, type TrafficLevel } from './traffic'
+import { tomtomConfigured, tomtomRoute, type TrafficLevel, type TrafficSegment } from './traffic'
 
 export type Route = {
   coords: LatLng[]
@@ -12,6 +12,8 @@ export type Route = {
   /** Extra minutes caused by traffic right now (TomTom only). */
   trafficDelayMin?: number
   traffic?: TrafficLevel
+  /** Slow/heavy stretches by index into coords (live traffic only); the rest of the route is clear. */
+  segments?: TrafficSegment[]
 }
 
 const cache = new Map<string, Route>()
@@ -29,6 +31,14 @@ export function estimateRoute(a: LatLng, b: LatLng): Route {
 function simplify(pts: LatLng[]) {
   const step = Math.max(1, Math.floor(pts.length / 250))
   return pts.filter((_, i) => i % step === 0 || i === pts.length - 1)
+}
+
+/** Same as simplify(), keeping traffic stretches pointing at the right (kept) points. */
+function simplifyWithSegments(pts: LatLng[], segments: TrafficSegment[]) {
+  const step = Math.max(1, Math.floor(pts.length / 250))
+  const coords = simplify(pts)
+  const at = (i: number) => Math.min(coords.length - 1, i >= pts.length - 1 ? coords.length - 1 : Math.round(i / step))
+  return { coords, segments: segments.map((s) => ({ ...s, from: at(s.from), to: Math.max(at(s.to), at(s.from) + 1) })).filter((s) => s.to <= coords.length - 1) }
 }
 
 /** OpenRouteService (when ORS_API_KEY is set). */
@@ -65,7 +75,7 @@ export async function getRoute(a: LatLng, b: LatLng, opts: { departAt?: Date } =
     if (live && Date.now() - live.at < 120_000) return live.route
     try {
       const r = await tomtomRoute(a, b, opts.departAt)
-      const route: Route = { ...r, coords: simplify(r.coords), source: 'tomtom' }
+      const route: Route = { ...r, ...simplifyWithSegments(r.coords, r.segments), source: 'tomtom' }
       if (liveCache.size > 500) liveCache.clear()
       liveCache.set(lk, { at: Date.now(), route })
       return route

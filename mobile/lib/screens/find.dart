@@ -87,6 +87,7 @@ class _FindTabState extends State<FindTab> {
         map: (pad) => RideMap(
           padding: pad,
           route: _preview?.coords ?? const [],
+          traffic: _preview?.segments ?? const [],
           pins: [MapPin(_pickup.point, 'pickup', label: _pickup.name), if (_drop != null) MapPin(_drop!.point, 'drop', label: _drop!.name)],
         ),
         footer: LoadingButton(label: 'Find a ride', icon: Icons.search, onPressed: _search),

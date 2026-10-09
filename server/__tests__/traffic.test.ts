@@ -22,7 +22,12 @@ beforeAll(async () => {
           routes: [
             {
               summary: { lengthInMeters: 12_400, travelTimeInSeconds: 2400, trafficDelayInSeconds: 720, noTrafficTravelTimeInSeconds: 1680 },
-              legs: [{ points: [{ latitude: 19.02, longitude: 72.87 }, { latitude: 19.1, longitude: 72.85 }] }],
+              legs: [{ points: [{ latitude: 19.02, longitude: 72.87 }, { latitude: 19.05, longitude: 72.86 }, { latitude: 19.08, longitude: 72.855 }, { latitude: 19.1, longitude: 72.85 }] }],
+              sections: [
+                { sectionType: 'TRAVEL_MODE', startPointIndex: 0, endPointIndex: 3 },
+                { sectionType: 'TRAFFIC', startPointIndex: 1, endPointIndex: 2, magnitudeOfDelay: 2, simpleCategory: 'JAM' },
+                { sectionType: 'TRAFFIC', startPointIndex: 2, endPointIndex: 3, magnitudeOfDelay: 4, simpleCategory: 'ROAD_CLOSURE' },
+              ],
             },
           ],
         }),
@@ -46,8 +51,15 @@ describe('Live traffic (TomTom)', () => {
     expect(r.status).toBe(200)
     expect(r.body).toMatchObject({ durationMin: 40, trafficDelayMin: 12, traffic: 'heavy', source: 'tomtom', distanceKm: 12.4 })
     expect(urls[0]).toContain('traffic=true')
+    expect(urls[0]).toContain('sectionType=traffic')
+    // Asking for the route too returns it with the slow stretches, for Google-style colouring.
+    const withRoute = await agent.get('/api/eta').query({ fromLat: 19.0222, fromLng: 72.8711, toLat: 19.1868, toLng: 72.8484, route: 1 })
+    expect(withRoute.body.coords).toHaveLength(4)
+    expect(withRoute.body.segments).toEqual([
+      { from: 1, to: 2, level: 'heavy' },
+      { from: 2, to: 3, level: 'severe' },
+    ])
     // Reused for a couple of minutes instead of calling TomTom again.
-    await agent.get('/api/eta').query({ fromLat: 19.0222, fromLng: 72.8711, toLat: 19.1868, toLng: 72.8484 })
     expect(urls.length).toBe(1)
   })
 

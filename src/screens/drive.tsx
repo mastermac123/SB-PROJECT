@@ -121,7 +121,7 @@ export function OfferRide() {
   return (
     <MapScreen
       snaps={[0.62, 0.92]}
-      map={<MapView markers={markers} routes={route ? [{ id: 'offer', coords: route.coords, kind: 'primary' }] : []} fit={route ? route.coords.filter((_, i) => i % 10 === 0).concat(markers.map((m) => m.at)) : markers.map((m) => m.at)} padding={padding} />}
+      map={<MapView markers={markers} routes={route ? [{ id: 'offer', coords: route.coords, kind: 'primary', traffic: route.segments }] : []} fit={route ? route.coords.filter((_, i) => i % 10 === 0).concat(markers.map((m) => m.at)) : markers.map((m) => m.at)} padding={padding} />}
       top={<BackButton surface />}
       header={
         <div className="row gap-2 grow" style={{ paddingBottom: 8 }}>
@@ -398,7 +398,9 @@ export function DriverRide() {
   }
 
   const upcoming = ride.status === 'scheduled' || live
-  const bubble = upcoming ? etaBubble(ride.route, eta) : null
+  // While the trip is upcoming or under way, show today's live route coloured by traffic (like Google Maps).
+  const liveRoute = upcoming && eta.coords && eta.coords.length > 1 ? { coords: eta.coords, traffic: eta.segments } : null
+  const bubble = upcoming ? etaBubble(liveRoute?.coords ?? ride.route, eta) : null
   const markers: MapMarker[] = [
     { id: 'o', at: ride.origin, kind: 'pickup', label: ride.origin.name, sublabel: `Leave ${time(ride.departAt)}`, darkLabel: true },
     { id: 'd', at: ride.destination, kind: 'drop', label: ride.destination.name, sublabel: upcoming ? `Arrive ~${time(eta.arrive)}` : undefined },
@@ -432,7 +434,7 @@ export function DriverRide() {
   return (
     <MapScreen
       snaps={[0.5, 0.92]}
-      map={<MapView routes={[{ id: ride.id, coords: ride.route }]} markers={markers} fit={pos ? [pos, ride.destination] : [ride.origin, ride.destination]} padding={padding} follow={pos ? 'car' : undefined} />}
+      map={<MapView routes={[liveRoute ? { id: `${ride.id}-live`, ...liveRoute } : { id: ride.id, coords: ride.route }]} markers={markers} fit={pos ? [pos, ride.destination] : [ride.origin, ride.destination]} padding={padding} follow={pos ? 'car' : undefined} />}
       top={
         <>
           <BackButton surface to="/rides" />

@@ -10,7 +10,7 @@ import '../util/geo.dart';
 import 'ride_map.dart';
 
 /// Trip time and arrival, with live traffic when the trip starts within 90 minutes or is under way.
-typedef TripEta = ({int minutes, double km, DateTime arrive, String? traffic, int delay});
+typedef TripEta = ({int minutes, double km, DateTime arrive, String? traffic, int delay, List<LatLngPoint> coords, List<TrafficSegment> segments});
 
 /// Fetches the traffic-aware trip time (every 2 minutes) and hands it to [builder].
 /// Falls back to the planned route time until/unless live data arrives.
@@ -39,7 +39,7 @@ class _TripEtaBuilderState extends State<TripEtaBuilder> {
 
   void _load() {
     if (!_soon) return;
-    context.read<Session>().api.eta(widget.from, widget.to).then((r) {
+    context.read<Session>().api.eta(widget.from, widget.to, route: true).then((r) {
       if (mounted) setState(() => _eta = r);
     }).catchError((_) {});
   }
@@ -74,7 +74,7 @@ class _TripEtaBuilderState extends State<TripEtaBuilder> {
     final e = _eta;
     final mins = e?.durationMin ?? widget.plannedMin;
     final start = widget.live || widget.departAt.isBefore(DateTime.now()) ? DateTime.now() : widget.departAt;
-    return widget.builder(context, (minutes: mins, km: widget.distanceKm, arrive: start.add(Duration(minutes: mins)), traffic: e?.traffic, delay: e?.trafficDelayMin ?? 0));
+    return widget.builder(context, (minutes: mins, km: widget.distanceKm, arrive: start.add(Duration(minutes: mins)), traffic: e?.traffic, delay: e?.trafficDelayMin ?? 0, coords: e?.coords ?? const [], segments: e?.segments ?? const []));
   }
 }
 

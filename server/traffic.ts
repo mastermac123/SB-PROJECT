@@ -12,6 +12,12 @@ export const tomtomConfigured = () => !!env.tomtomKey
 
 export type TrafficLevel = 'light' | 'moderate' | 'heavy'
 
+/**
+ * A stretch of the route with traffic, by point index (Google-style colours):
+ * slow = orange, heavy = red, severe = dark red (standstill or closure). Everything else is clear (blue).
+ */
+export type TrafficSegment = { from: number; to: number; level: 'slow' | 'heavy' | 'severe' }
+
 /** How bad traffic is, from the extra time it adds to the trip. */
 export function trafficLevel(delayMin: number, freeFlowMin: number): TrafficLevel {
   const ratio = freeFlowMin > 0 ? delayMin / freeFlowMin : 0
@@ -21,6 +27,15 @@ export function trafficLevel(delayMin: number, freeFlowMin: number): TrafficLeve
 type TTRoute = {
   summary: { lengthInMeters: number; travelTimeInSeconds: number; trafficDelayInSeconds?: number; noTrafficTravelTimeInSeconds?: number }
   legs: { points: { latitude: number; longitude: number }[] }[]
+  sections?: { sectionType?: string; startPointIndex: number; endPointIndex: number; magnitudeOfDelay?: number; simpleCategory?: string }[]
+}
+
+/** TomTom's delay size (1 minor … 3 major, 4 unknown/closure) → our colours. */
+function segmentLevel(magnitude = 0, category = ''): TrafficSegment['level'] | null {
+  if (category === 'ROAD_CLOSURE' || magnitude >= 3) return 'severe'
+  if (magnitude === 2) return 'heavy'
+  if (magnitude === 1 || category === 'JAM') return 'slow'
+  return null
 }
 
 export async function tomtomRoute(a: LatLng, b: LatLng, departAt?: Date) {
@@ -30,7 +45,7 @@ export async function tomtomRoute(a: LatLng, b: LatLng, departAt?: Date) {
     // Leaving now → live traffic; a later time → TomTom's typical traffic for that hour.
     const when = departAt && departAt.getTime() > Date.now() + 10 * 60_000 ? `&departAt=${encodeURIComponent(departAt.toISOString())}` : ''
     const res = await fetch(
-      `https://api.tomtom.com/routing/1/calculateRoute/${a.lat},${a.lng}:${b.lat},${b.lng}/json?key=${encodeURIComponent(env.tomtomKey)}&traffic=true&travelMode=car&routeType=fastest&computeTravelTimeFor=all${when}`,
+      `https://api.tomtom.com/routing/1/calculateRoute/${a.lat},${a.lng}:${b.lat},${b.lng}/json?key=${encodeURIComponent(env.tomtomKey)}&traffic=true&travelMode=car&routeType=fastest&computeTravelTimeFor=all&sectionType=traffic${when}`,
       { signal: ctrl.signal },
     )
     if (!res.ok) throw new Error(`tomtom ${res.status}`)
@@ -39,8 +54,15 @@ export async function tomtomRoute(a: LatLng, b: LatLng, departAt?: Date) {
     const durationMin = Math.max(1, Math.round(r.summary.travelTimeInSeconds / 60))
     const freeFlowMin = Math.round((r.summary.noTrafficTravelTimeInSeconds ?? r.summary.travelTimeInSeconds) / 60)
     const trafficDelayMin = Math.max(0, Math.round((r.summary.trafficDelayInSeconds ?? (r.summary.travelTimeInSeconds - (r.summary.noTrafficTravelTimeInSeconds ?? r.summary.travelTimeInSeconds))) / 60))
+    const segments: TrafficSegment[] = []
+    for (const sec of r.sections ?? []) {
+      if (sec.sectionType !== 'TRAFFIC') continue
+      const level = segmentLevel(sec.magnitudeOfDelay, sec.simpleCategory)
+      if (level && sec.endPointIndex > sec.startPointIndex) segments.push({ from: sec.startPointIndex, to: sec.endPointIndex, level })
+    }
     return {
       coords: r.legs.flatMap((l) => l.points.map((p) => ({ lat: p.latitude, lng: p.longitude }))),
+      segments,
       distanceKm: r.summary.lengthInMeters / 1000,
       durationMin,
       trafficDelayMin,

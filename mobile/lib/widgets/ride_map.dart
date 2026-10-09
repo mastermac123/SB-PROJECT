@@ -18,6 +18,10 @@ import '../theme.dart';
 /// Android/iOS project) → real Google Maps. Otherwise the free OpenStreetMap map.
 const useGoogleMaps = bool.fromEnvironment('GOOGLE_MAPS');
 
+/// Google Maps colours: clear = blue (the route itself), slow = orange, heavy = red, standstill = dark red.
+const routeBlue = Color(0xFF1A73E8);
+Color trafficColor(String level) => switch (level) { 'severe' => const Color(0xFF8B1A1A), 'heavy' => const Color(0xFFE3242B), _ => const Color(0xFFF29900) };
+
 class MapPin {
   final LatLngPoint at;
   final String kind; // pickup | drop | car | me | eta (time bubble on the route)
@@ -103,9 +107,13 @@ class RideMap extends StatefulWidget {
     this.padding = EdgeInsets.zero,
     this.animateRoute = true,
     this.interactive = true,
+    this.traffic = const [],
   });
 
   final List<LatLngPoint> route;
+
+  /// Live traffic on [route] (index ranges), drawn over the blue line like Google Maps.
+  final List<TrafficSegment> traffic;
 
   /// Faded routes behind the main one (e.g. other matches).
   final List<List<LatLngPoint>> altRoutes;
@@ -218,6 +226,12 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
   }
 
   List<LatLngPoint> get _allPoints => [...widget.route, ...widget.pins.where((p) => p.kind != 'car' || widget.follow == null).map((p) => p.at)];
+
+  /// The slow / heavy / standstill stretches of the route, with their colours.
+  List<(List<LatLngPoint>, Color)> _stretches() => [
+        for (final t in widget.traffic)
+          if (t.to > t.from && t.from >= 0 && t.from < widget.route.length) (widget.route.sublist(t.from, math.min(widget.route.length, t.to + 1)), trafficColor(t.level)),
+      ];
 
   List<LatLngPoint> _partial(List<LatLngPoint> r, double t) {
     if (t >= 1 || r.length < 2) return r;
@@ -415,7 +429,10 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
           gm.Polyline(polylineId: gm.PolylineId('alt$i'), points: r.map((p) => gm.LatLng(p.lat, p.lng)).toList(), color: const Color(0xFFA99EF2), width: 4, zIndex: 1),
         if (route.length > 1) ...{
           gm.Polyline(polylineId: const gm.PolylineId('casing'), points: route, color: Colors.white, width: 9, zIndex: 2, jointType: gm.JointType.round, startCap: gm.Cap.roundCap, endCap: gm.Cap.roundCap),
-          gm.Polyline(polylineId: const gm.PolylineId('route'), points: route, color: RS.primary, width: 5, zIndex: 3, jointType: gm.JointType.round, startCap: gm.Cap.roundCap, endCap: gm.Cap.roundCap),
+          gm.Polyline(polylineId: const gm.PolylineId('route'), points: route, color: routeBlue, width: 5, zIndex: 3, jointType: gm.JointType.round, startCap: gm.Cap.roundCap, endCap: gm.Cap.roundCap),
+          if (_routeAnim.value >= 1)
+            for (final (i, t) in _stretches().indexed)
+              gm.Polyline(polylineId: gm.PolylineId('traffic$i'), points: t.$1.map((p) => gm.LatLng(p.lat, p.lng)).toList(), color: t.$2, width: 5, zIndex: 4, jointType: gm.JointType.round),
         },
       },
     );
@@ -492,7 +509,10 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
           for (final r in widget.altRoutes) fm.Polyline(points: r.map((p) => ll.LatLng(p.lat, p.lng)).toList(), strokeWidth: 4, color: const Color(0xFFA99EF2)),
           if (route.length > 1) ...[
             fm.Polyline(points: route, strokeWidth: 9, color: Colors.white),
-            fm.Polyline(points: route, strokeWidth: 5, color: RS.primary),
+            fm.Polyline(points: route, strokeWidth: 5, color: routeBlue),
+            // Traffic colours appear once the route has finished drawing.
+            if (_routeAnim.value >= 1)
+              for (final t in _stretches()) fm.Polyline(points: t.$1.map((p) => ll.LatLng(p.lat, p.lng)).toList(), strokeWidth: 5, color: t.$2),
           ],
         ]),
         fm.MarkerLayer(markers: [

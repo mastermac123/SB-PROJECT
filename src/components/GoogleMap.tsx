@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { drawRoute, glide } from '@/lib/glide'
 import { loadGoogleMaps } from './googleLoader'
-import { markerHtml, ROUTE_STYLE, type MapMarker, type MapViewProps } from './MapView'
+import { markerHtml, ROUTE_STYLE, trafficStretches, type MapMarker, type MapViewProps } from './MapView'
 
 type HtmlMarker = google.maps.OverlayView & { el: HTMLDivElement; pos: google.maps.LatLngLiteral; update(m: MapMarker): void; setPosition(p: google.maps.LatLngLiteral): void }
 
@@ -110,7 +110,7 @@ export default function GoogleMap({
   }, [browserKey])
 
   // Routes (white casing under a coloured line; dashed for "muted").
-  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}`).join('|')
+  const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}:${JSON.stringify(r.traffic ?? [])}`).join('|')
   useEffect(() => {
     const m = map.current
     if (!m || !ready) return
@@ -141,6 +141,9 @@ export default function GoogleMap({
         lines.current.push(
           new google.maps.Polyline({ map: m, path, clickable: false, strokeColor: style.line.color, strokeWeight: style.line.weight, strokeOpacity: style.line.opacity, zIndex: z + 1 }),
         )
+        for (const t of trafficStretches(r)) {
+          lines.current.push(new google.maps.Polyline({ map: m, path: t.coords, clickable: false, strokeColor: t.color, strokeWeight: style.line.weight, strokeOpacity: 1, zIndex: z + 2 }))
+        }
         // The main route draws itself from pickup to destination.
         if (kind === 'primary' && animateRoutes) {
           const casing = lines.current.at(-2)!
