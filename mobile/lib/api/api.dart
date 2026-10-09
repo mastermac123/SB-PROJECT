@@ -90,6 +90,12 @@ class Api {
 
   Future<void> logout() => post('/auth/logout');
 
+  /// Finish Sign in with Microsoft: swap the one-time code from ridesync://auth for a login.
+  Future<(User, String)> appExchange(String code) async => _login(await post('/auth/app/exchange', {'code': code}));
+
+  /// Address that starts Sign in with Microsoft in the phone's browser.
+  String get microsoftStartUrl => '$baseUrl/api/auth/microsoft/start?app=1';
+
   /* ---- Me ---- */
 
   Future<User> me() async => User.fromJson(_map(await get('/me')));
@@ -141,7 +147,12 @@ class Api {
   Future<void> arrived(String id) => post('/bookings/$id/arrived');
   Future<void> pickedUp(String id) => post('/bookings/$id/picked-up');
   Future<void> dropped(String id) => post('/bookings/$id/dropped');
-  Future<void> rate(String id, int stars) => post('/bookings/$id/rate', {'stars': stars});
+  Future<void> rate(String id, int stars, [List<String> tags = const []]) => post('/bookings/$id/rate', {'stars': stars, if (tags.isNotEmpty) 'tags': tags});
+
+  /// Razorpay: the server creates the order (amount is decided server-side).
+  Future<Map<String, dynamic>> onlineOrder(String bookingId) async => _map(await post('/bookings/$bookingId/pay/online'));
+  Future<void> verifyOnline(String bookingId, String orderId, String paymentId, String signature) =>
+      post('/bookings/$bookingId/pay/online/verify', {'razorpay_order_id': orderId, 'razorpay_payment_id': paymentId, 'razorpay_signature': signature});
 
   /* ---- Lists ---- */
 

@@ -12,6 +12,8 @@ import '../util/format.dart';
 import '../widgets/common.dart';
 import '../widgets/place_picker.dart';
 import '../widgets/ride_card.dart';
+import '../widgets/map_sheet.dart';
+import '../widgets/motion.dart';
 import '../widgets/ride_map.dart';
 import 'chat.dart';
 import 'find.dart';
@@ -81,8 +83,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
       });
       if (!mounted) return;
-      toast(context, 'Ride published — students going your way can book now');
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: ride.id)));
+      await showSuccess(context, 'Ride published', subtitle: 'Students going your way can see it and book now.');
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: ride.id)));
     } catch (e) {
       if (mounted) setState(() => (_error = errorText(e), _publishing = false));
     }
@@ -93,17 +95,17 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
     final vehicle = context.read<Session>().user!.vehicle!;
     final suggested = _suggested;
     final maxFare = suggested == null ? 0 : maxFareFor(suggested);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Offer a ride')),
-      body: ListView(padding: EdgeInsets.zero, children: [
-        RideMap(
-          height: 200,
-          route: _route?.coords ?? const [],
-          pins: [MapPin(_from.point, 'pickup'), if (_to != null) MapPin(_to!.point, 'drop')],
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return MapSheetScaffold(
+      initialSize: 0.6,
+      minSize: 0.35,
+      title: const Text('Offer a ride'),
+      map: (pad) => RideMap(
+        padding: pad,
+        route: _route?.coords ?? const [],
+        pins: [MapPin(_from.point, 'pickup', label: _from.name), if (_to != null) MapPin(_to!.point, 'drop', label: _to!.name)],
+      ),
+      footer: LoadingButton(label: _route == null ? 'Choose where you’re going' : 'Publish ride · ${money(_effectiveFare)}/seat', icon: Icons.check, loading: _publishing, onPressed: _route == null ? null : _publish),
+      children: [
             Panel(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Column(children: [
@@ -189,11 +191,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
             TextField(controller: _note, maxLength: 200, decoration: const InputDecoration(labelText: 'Note for riders (optional)', hintText: 'e.g. Leaving from the main gate')),
             const SizedBox(height: 8),
             if (_error != null) ...[Notice(_error!, tone: 'error'), const SizedBox(height: 12)],
-            LoadingButton(label: 'Publish ride', icon: Icons.check, loading: _publishing, onPressed: _route == null ? null : _publish),
-            const SizedBox(height: 24),
-          ]),
-        ),
-      ]),
+      ],
     );
   }
 }
@@ -248,20 +246,19 @@ class _DriveScreenState extends State<DriveScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Your ride')),
-        body: LiveLoader<RideDetail>(
-          load: (api) => api.ride(widget.rideId),
-          builder: (context, d, reload) {
-            final ride = d.ride;
-            if (ride.status == 'in_progress') {
-              WidgetsBinding.instance.addPostFrameCallback((_) => _startSharing());
-            } else {
-              _stopSharing();
-            }
-            return _body(context, d);
-          },
-        ),
+  Widget build(BuildContext context) => LiveLoader<RideDetail>(
+        refreshable: false,
+        loading: MapSheetScaffold(map: (pad) => RideMap(padding: pad), children: const [SizedBox(height: 260, child: SkeletonList(count: 1))]),
+        load: (api) => api.ride(widget.rideId),
+        builder: (context, d, reload) {
+          final ride = d.ride;
+          if (ride.status == 'in_progress') {
+            WidgetsBinding.instance.addPostFrameCallback((_) => _startSharing());
+          } else {
+            _stopSharing();
+          }
+          return _body(context, d);
+        },
       );
 
   Widget _body(BuildContext context, RideDetail d) {
@@ -270,21 +267,23 @@ class _DriveScreenState extends State<DriveScreen> {
     final pending = d.bookings.where((b) => b.booking.status == 'pending').toList();
     final riders = d.bookings.where((b) => const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].contains(b.booking.status)).toList();
     final me = _pos == null ? null : LatLngPoint(_pos!.latitude, _pos!.longitude);
-    return ListView(padding: EdgeInsets.zero, children: [
-      RideMap(
-        height: 240,
+    return MapSheetScaffold(
+      initialSize: ride.status == 'in_progress' ? 0.42 : 0.55,
+      minSize: 0.28,
+      title: const Text('Your ride'),
+      topActions: [FloatingMapButton(icon: Icons.ios_share_rounded, onTap: () => shareRide(context, ride, d.driver.name))],
+      map: (pad) => RideMap(
+        padding: pad,
         route: ride.route,
         follow: ride.status == 'in_progress' ? me : null,
         pins: [
-          MapPin(ride.origin.point, 'pickup'),
-          MapPin(ride.destination.point, 'drop'),
-          for (final r in riders.where((r) => r.booking.isActive)) MapPin(r.booking.pickup.point, 'me'),
+          MapPin(ride.origin.point, 'pickup', label: ride.origin.name),
+          MapPin(ride.destination.point, 'drop', label: ride.destination.name),
+          for (final r in riders.where((r) => r.booking.isActive)) MapPin(r.booking.pickup.point, 'me', label: '${r.rider.firstName}’s pickup'),
           if (me != null) MapPin(me, 'car', heading: _pos!.heading),
         ],
       ),
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      children: [
           Row(children: [
             Expanded(child: Text(when(ride.departAt), style: RS.heading(20))),
             Pill.status(ride.status == 'scheduled' ? 'confirmed' : ride.status, switch (ride.status) { 'scheduled' => 'Scheduled', 'in_progress' => 'On the road', 'completed' => 'Completed', _ => 'Cancelled' }),
@@ -355,10 +354,8 @@ class _DriveScreenState extends State<DriveScreen> {
                 _stopSharing();
               }, success: 'Ride complete — thanks for driving!'),
             ),
-          const SizedBox(height: 24),
-        ]),
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -401,7 +398,7 @@ class _RiderPanel extends StatelessWidget {
               label: const Text('Payment received'),
             ),
           if (b.status == 'completed' && b.driverRating == null)
-            OutlinedButton.icon(onPressed: () => showRateSheet(context, b.id, r.rider.firstName), icon: const Icon(Icons.star_outline, size: 18), label: const Text('Rate')),
+            OutlinedButton.icon(onPressed: () => showRateSheet(context, b.id, r.rider.firstName, photo: r.rider.photo, ratingDriver: false), icon: const Icon(Icons.star_outline, size: 18), label: const Text('Rate')),
         ]),
         if (next != null) ...[
           const SizedBox(height: 10),

@@ -47,10 +47,17 @@ jobs:
         run: flutter analyze && flutter test
 
       - name: Build APKs
+        env:
+          # Optional repository secret: a Google Maps key restricted to Android apps.
+          GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
         run: |
+          GM=false
+          if [ -n "$GOOGLE_MAPS_ANDROID_KEY" ]; then GM=true; fi
+          echo "Google Maps in the app: $GM"
+          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} --dart-define=GOOGLE_MAPS=$GM"
           # One APK that works on every phone, plus a smaller one for modern (64-bit) phones.
-          flutter build apk --release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }}
-          flutter build apk --release --split-per-abi --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }}
+          flutter build apk $ARGS
+          flutter build apk --split-per-abi $ARGS
 
       - name: Publish APK
         env:

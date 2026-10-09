@@ -39,7 +39,7 @@ import {
 } from './logic'
 import { getRoute } from './routing'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
-import { microsoftCallback, microsoftStart } from './microsoft'
+import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
 import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
 import { createOrder, refundPayment, verifyPaymentSignature, verifyWebhookSignature } from './razorpay'
 
@@ -101,6 +101,20 @@ api.get(
   }),
 )
 api.get('/auth/microsoft/callback', h((req, res) => microsoftCallback(req, res)))
+
+// The app finishes Microsoft sign-in by swapping its one-time code for a login token.
+api.post(
+  '/auth/app/exchange',
+  h((req, res) => {
+    const { code } = parse(z.object({ code: z.string().min(20).max(80) }), req.body)
+    const h = takeHandoff(code)
+    if (!h) throw new HttpError(400, 'Sign-in expired. Please try again.')
+    const user = one(`SELECT * FROM users WHERE id = ? AND deleted = 0`, h.userId)
+    if (!user) throw new HttpError(403, 'This account is no longer available.')
+    const token = startSession(res, h.userId)
+    return { user: meUser(user), isNew: h.isNew, token }
+  }),
+)
 
 api.post(
   '/auth/google',

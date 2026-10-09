@@ -185,7 +185,10 @@ The mobile app is a **Flutter** app written in **Dart**, in the `mobile/` folder
 | UI | Flutter (Material 3) with RideSync's colours and fonts (`lib/theme.dart`) |
 | Server calls | `http`; live updates over Server-Sent Events (`lib/api/`) |
 | State | `provider` (`lib/state/session.dart`) |
-| Maps | `flutter_map` + OpenStreetMap |
+| Maps | Google Maps (`google_maps_flutter`) when a key is set, otherwise `flutter_map` + OpenStreetMap. In both, the car glides between GPS updates, the route draws itself and the pickup pulses |
+| Payments | `razorpay_flutter` (online), UPI app links and QR (`qr_flutter`), cash |
+| Sign in with Microsoft | `flutter_web_auth_2` (phone browser → `ridesync://auth` → one-time code swapped for a login) |
+| Sharing | `share_plus` |
 | GPS | `geolocator` |
 | Photos | `image_picker` |
 | Login storage | `flutter_secure_storage` |
@@ -200,6 +203,22 @@ GitHub builds the APK automatically on every update to `main`.
 3. On first launch the app asks for a **server link**:
    - Testing with your laptop: run `start.bat`, then `share.bat`, and paste the `https://….trycloudflare.com` link.
    - Once RideSync is online: add the repository variable `RIDESYNC_SERVER_URL` = `https://your-server` (GitHub → Settings → Secrets and variables → Actions → Variables). The next build connects automatically.
+
+### Real Google Maps in the app
+
+1. In Google Cloud (the same project as the website key), enable **Maps SDK for Android**. For iPhone, also enable **Maps SDK for iOS**.
+2. **Credentials → Create credentials → API key.**
+   - Under **Application restrictions**, choose **Android apps**.
+   - Add package `com.ridesync.ridesync` with the SHA-1 of the test signing key. To get it, run `keytool -list -v -keystore mobile/android/app/ridesync-test.jks -storepass ridesync-test`.
+   - Under **API restrictions**, choose **Maps SDK for Android**.
+3. In GitHub, go to **Settings → Secrets and variables → Actions → Secrets → New repository secret**. Set the name to `GOOGLE_MAPS_ANDROID_KEY` and paste the key as the value.
+4. The next build uses Google Maps. Without the secret, the app uses the free OpenStreetMap map.
+
+Map loads in the Android app are free within Google's monthly allowance; check current pricing.
+
+### Updating the app
+
+Every build is signed with the same test key (`mobile/android/app/ridesync-test.jks`), so a new APK installs over the old one and you stay logged in. For the Play Store, create your own private upload key; never publish with the test key.
 
 ### Build it yourself
 
@@ -240,7 +259,6 @@ On the Mac, run `flutter build ipa --dart-define=RIDESYNC_SERVER_URL=https://you
 
 - push notifications while the app is closed (Firebase)
 - location sharing with the screen off
-- Sign in with Microsoft inside the app
 
 ## 4. Put it online
 

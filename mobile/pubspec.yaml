@@ -21,6 +21,11 @@ dependencies:
   shared_preferences: 2.5.5
   intl: 0.20.3
   google_fonts: 8.2.1
+  google_maps_flutter: 2.18.1
+  razorpay_flutter: 1.4.7
+  qr_flutter: 4.1.0
+  flutter_web_auth_2: 5.1.0
+  share_plus: 13.3.0
 
 dev_dependencies:
   flutter_test:

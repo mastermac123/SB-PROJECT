@@ -18,6 +18,8 @@
 		<string>tel</string>
 		<string>sms</string>
 	</array>
+	<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_IOS_KEY)</string>
 	<key>CFBundleDisplayName</key>
 	<string>RideSync</string>
 	<key>CFBundleExecutable</key>

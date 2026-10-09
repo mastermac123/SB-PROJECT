@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/models.dart';
+import '../data/places.dart';
 import '../state/session.dart';
 import '../theme.dart';
 import '../util/format.dart';
 import '../widgets/common.dart';
+import '../widgets/map_sheet.dart';
+import '../widgets/motion.dart';
 import '../widgets/ride_card.dart';
+import '../widgets/ride_map.dart';
 import 'drive.dart';
 import 'notifications.dart';
 import 'profile.dart';
 import 'trip.dart';
 
+/// Home: the map of rides leaving soon, with "Where to?" on a sheet — like a ride app.
 class HomeTab extends StatelessWidget {
   const HomeTab({super.key, required this.onFind});
   final VoidCallback onFind;
@@ -24,97 +29,124 @@ class HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<Session>().user!;
-    return Scaffold(
-      appBar: AppBar(
-        title: Image.asset('assets/ridesync-logo.png', height: 28),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+    return LiveLoader<(List<FeedItem>, Trips)>(
+      refreshable: false,
+      load: (api) async => (await api.feed(), await api.trips()),
+      loading: MapSheetScaffold(map: (pad) => RideMap(padding: pad, pins: const [MapPin(LatLngPoint(19.0222, 72.8711), 'pickup')]), children: const [SizedBox(height: 220, child: SkeletonList(count: 1))]),
+      builder: (context, data, reload) {
+        final (feed, trips) = data;
+        final active = trips.bookings.where((b) => b.booking.isActive).toList();
+        final driving = trips.rides.where((r) => r.ride.status == 'scheduled' || r.ride.status == 'in_progress').toList();
+        final focus = active.isNotEmpty ? active.first.ride.route : (driving.isNotEmpty ? driving.first.ride.route : const <LatLngPoint>[]);
+        return MapSheetScaffold(
+          initialSize: 0.52,
+          minSize: 0.3,
+          showBack: false,
+          title: Image.asset('assets/ridesync-logo.png', height: 22),
+          topActions: [
+            FloatingMapButton(icon: Icons.notifications_none_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
+          ],
+          map: (pad) => RideMap(
+            padding: pad,
+            route: focus,
+            altRoutes: [for (final f in feed.take(6)) f.ride.route],
+            pins: [
+              if (active.isNotEmpty) ...[
+                MapPin(active.first.booking.pickup.point, 'pickup', label: active.first.booking.pickup.name),
+                MapPin(active.first.booking.drop.point, 'drop', label: active.first.booking.drop.name),
+              ] else if (driving.isNotEmpty) ...[
+                MapPin(driving.first.ride.origin.point, 'pickup', label: driving.first.ride.origin.name),
+                MapPin(driving.first.ride.destination.point, 'drop', label: driving.first.ride.destination.name),
+              ] else
+                MapPin(campus.point, 'pickup', label: campus.name),
+              for (final f in feed.take(6)) MapPin(f.ride.destination.point, 'drop', label: f.ride.destination.name),
+            ],
           ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: LiveLoader<(List<FeedItem>, Trips)>(
-        load: (api) async => (await api.feed(), await api.trips()),
-        builder: (context, data, reload) {
-          final (feed, trips) = data;
-          final active = trips.bookings.where((b) => b.booking.isActive).toList();
-          final driving = trips.rides.where((r) => r.ride.status == 'scheduled' || r.ride.status == 'in_progress').toList();
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
+          children: [
             Text('${_greeting()}, ${user.firstName}', style: const TextStyle(color: RS.ink500, fontSize: 15)),
-            const SizedBox(height: 4),
-            Text('Where are you going?', style: RS.heading(26)),
-            const SizedBox(height: 16),
-            Panel(
+            const SizedBox(height: 2),
+            Text('Where are you going?', style: RS.heading(24)),
+            const SizedBox(height: 14),
+            PressScale(
               onTap: onFind,
-              child: Row(children: [
-                const CircleAvatar(backgroundColor: RS.primary, child: Icon(Icons.search, color: Colors.white)),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Find a ride', style: RS.heading(17)),
-                    const Text('AI matches you with students going your way', style: TextStyle(color: RS.ink500, fontSize: 13)),
-                  ]),
+              child: Material(
+                color: RS.sunken,
+                borderRadius: BorderRadius.circular(RS.radiusMd),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(RS.radiusMd),
+                  onTap: onFind,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    child: Row(children: [
+                      Icon(Icons.search, color: RS.ink900),
+                      SizedBox(width: 12),
+                      Expanded(child: Text('Where to?', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600))),
+                      Icon(Icons.schedule, size: 18, color: RS.ink500),
+                      SizedBox(width: 4),
+                      Text('Now', style: TextStyle(color: RS.ink500, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
                 ),
-                const Icon(Icons.chevron_right, color: RS.ink400),
-              ]),
+              ),
             ),
             const SizedBox(height: 12),
-            Panel(
-              onTap: () => user.canDrive
-                  ? Navigator.push(context, MaterialPageRoute(builder: (_) => const OfferRideScreen()))
-                  : Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleScreen(offerAfter: true))),
-              child: Row(children: [
-                const CircleAvatar(backgroundColor: RS.primary50, child: Icon(Icons.directions_car_rounded, color: RS.primary)),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Offer a ride', style: RS.heading(17)),
-                    Text(user.canDrive ? 'Share empty seats and split fuel costs' : 'Add your car to start offering rides', style: const TextStyle(color: RS.ink500, fontSize: 13)),
-                  ]),
+            Row(children: [
+              Expanded(child: _QuickAction(icon: Icons.search, label: 'Find a ride', onTap: onFind)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.directions_car_rounded,
+                  label: user.canDrive ? 'Offer a ride' : 'Add your car',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => user.canDrive ? const OfferRideScreen() : const VehicleScreen(offerAfter: true))),
                 ),
-                const Icon(Icons.chevron_right, color: RS.ink400),
-              ]),
-            ),
+              ),
+            ]),
             if (active.isNotEmpty || driving.isNotEmpty) const SectionTitle('Your upcoming rides'),
-            for (final t in active)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Panel(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: t.booking.id))),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text(when(t.ride.departAt), style: RS.heading(15)),
-                      const Spacer(),
-                      Pill.status(t.booking.status, bookingStatusLabel[t.booking.status] ?? t.booking.status),
+            for (final (i, t) in active.indexed)
+              FadeSlideIn(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Panel(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: t.booking.id))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        if (const ['driver_arriving', 'driver_arrived', 'in_progress'].contains(t.booking.status)) const LiveDot(),
+                        Text(when(t.ride.departAt), style: RS.heading(15)),
+                        const Spacer(),
+                        Pill.status(t.booking.status, bookingStatusLabel[t.booking.status] ?? t.booking.status),
+                      ]),
+                      const SizedBox(height: 10),
+                      RouteLine(from: t.booking.pickup, to: t.booking.drop, dense: true),
+                      const SizedBox(height: 8),
+                      Text('With ${t.driver.name}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
                     ]),
-                    const SizedBox(height: 10),
-                    RouteLine(from: t.booking.pickup, to: t.booking.drop, dense: true),
-                    const SizedBox(height: 8),
-                    Text('With ${t.driver.name}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
-                  ]),
+                  ),
                 ),
               ),
-            for (final r in driving)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Panel(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: r.ride.id))),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text(when(r.ride.departAt), style: RS.heading(15)),
-                      const Spacer(),
-                      if (r.pending > 0) Pill('${r.pending} request${r.pending == 1 ? '' : 's'}', color: RS.warning, background: RS.warning50) else const Pill('You’re driving'),
+            for (final (i, r) in driving.indexed)
+              FadeSlideIn(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Panel(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: r.ride.id))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        if (r.ride.status == 'in_progress') const LiveDot(),
+                        Text(when(r.ride.departAt), style: RS.heading(15)),
+                        const Spacer(),
+                        if (r.pending > 0) Pill('${r.pending} request${r.pending == 1 ? '' : 's'}', color: RS.warning, background: RS.warning50) else const Pill('You’re driving'),
+                      ]),
+                      const SizedBox(height: 10),
+                      RouteLine(from: r.ride.origin, to: r.ride.destination, dense: true),
+                      const SizedBox(height: 8),
+                      Text('${r.ride.seatsBooked}/${r.ride.seatsTotal} seats booked', style: const TextStyle(color: RS.ink500, fontSize: 13)),
                     ]),
-                    const SizedBox(height: 10),
-                    RouteLine(from: r.ride.origin, to: r.ride.destination, dense: true),
-                    const SizedBox(height: 8),
-                    Text('${r.ride.seatsBooked}/${r.ride.seatsTotal} seats booked', style: const TextStyle(color: RS.ink500, fontSize: 13)),
-                  ]),
+                  ),
                 ),
               ),
-            const SectionTitle('Leaving soon'),
+            SectionTitle('Leaving soon', trailing: feed.isEmpty ? null : Row(children: [const LiveDot(size: 7), Text('Live', style: TextStyle(color: RS.success, fontSize: 12, fontWeight: FontWeight.w700))])),
             if (feed.isEmpty)
               Panel(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -123,19 +155,39 @@ class HomeTab extends StatelessWidget {
                   const Text('When a VIT student offers a ride, it appears here instantly. Driving somewhere? Offer your empty seats.', style: TextStyle(color: RS.ink500, height: 1.4)),
                 ]),
               ),
-            for (final f in feed)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: RideCard(
-                  ride: f.ride,
-                  driver: f.driver,
-                  vehicle: f.vehicle,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RideDetailsScreen(rideId: f.ride.id))),
+            for (final (i, f) in feed.indexed)
+              FadeSlideIn(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: RideCard(
+                    ride: f.ride,
+                    driver: f.driver,
+                    vehicle: f.vehicle,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RideDetailsScreen(rideId: f.ride.id))),
+                  ),
                 ),
               ),
-          ]);
-        },
-      ),
+          ],
+        );
+      },
     );
   }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Panel(
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(children: [
+          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: RS.primary50, borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: RS.primary, size: 20)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+        ]),
+      );
 }

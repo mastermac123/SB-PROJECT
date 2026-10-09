@@ -442,8 +442,14 @@ class AppConfig {
   final bool emailLogin;
   final bool codesInTerminal;
   final bool devLogin;
+  final bool microsoftLogin;
+
+  /// Set when the server has Razorpay keys → "Pay online" is offered.
+  final String? razorpayKeyId;
   AppConfig.fromJson(Map<String, dynamic> j)
-      : allowedDomain = _s(j['allowedDomain']).isEmpty ? 'vit.edu.in' : _s(j['allowedDomain']),
+      : microsoftLogin = j['microsoftLogin'] == true,
+        razorpayKeyId = _ns(j['razorpayKeyId']),
+        allowedDomain = _s(j['allowedDomain']).isEmpty ? 'vit.edu.in' : _s(j['allowedDomain']),
         emailLogin = j['emailLogin'] == true,
         codesInTerminal = j['codesInTerminal'] == true,
         devLogin = j['devLogin'] == true;

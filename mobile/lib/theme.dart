@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -43,6 +44,10 @@ ThemeData buildTheme() {
   final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(RS.radiusMd));
   return base.copyWith(
     textTheme: text,
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
     appBarTheme: AppBarTheme(
       backgroundColor: RS.canvas,
       surfaceTintColor: Colors.transparent,

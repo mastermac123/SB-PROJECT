@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { LatLng } from '@/lib/types'
 import { useConfig } from '@/services/api'
+import { glide } from '@/lib/glide'
 import { googleMapsFailed, onGoogleMapsFailed } from './googleLoader'
 
 const GoogleMap = lazy(() => import('./GoogleMap'))
@@ -109,6 +110,7 @@ function LeafletMap({
   const map = useRef<L.Map | null>(null)
   const routeLayer = useRef<L.LayerGroup | null>(null)
   const markerRefs = useRef(new Map<string, { marker: L.Marker; sig: string }>())
+  const gliding = useRef(new Map<string, () => void>())
   const tileLayer = useRef<L.TileLayer | null>(null)
   const tiles = useConfig().data?.maps?.tiles
 
@@ -193,7 +195,14 @@ function LeafletMap({
       const sig = `${mk.kind}|${mk.label}|${mk.sublabel}|${mk.darkLabel}`
       const existing = markerRefs.current.get(mk.id)
       if (existing && existing.sig === sig) {
-        existing.marker.setLatLng([mk.at.lat, mk.at.lng])
+        if (mk.kind === 'car') {
+          // The car glides between GPS updates like in a ride app.
+          const cur = existing.marker.getLatLng()
+          gliding.current.get(mk.id)?.()
+          gliding.current.set(mk.id, glide({ lat: cur.lat, lng: cur.lng }, mk.at, (p) => existing.marker.setLatLng([p.lat, p.lng])))
+        } else {
+          existing.marker.setLatLng([mk.at.lat, mk.at.lng])
+        }
         if (mk.kind === 'car') {
           const arrow = existing.marker.getElement()?.querySelector<HTMLElement>('.mk-car__arrow')
           if (arrow) arrow.style.transform = `rotate(${mk.heading ?? 0}deg)`
@@ -208,6 +217,8 @@ function LeafletMap({
       if (!seen.has(id)) {
         ref.marker.remove()
         markerRefs.current.delete(id)
+        gliding.current.get(id)?.()
+        gliding.current.delete(id)
       }
     }
   }, [markers])

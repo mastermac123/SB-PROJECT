@@ -15,7 +15,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.ridesync.ridesync"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -27,13 +26,24 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Google Maps key for Android (set GOOGLE_MAPS_ANDROID_KEY when building). Empty = free map.
+        manifestPlaceholders["googleMapsKey"] = System.getenv("GOOGLE_MAPS_ANDROID_KEY") ?: ""
+    }
+
+    signingConfigs {
+        // Test-distribution key, committed so every GitHub build can update the
+        // app already on a phone. Use your own private key for the Play Store.
+        create("ridesyncTest") {
+            storeFile = file("ridesync-test.jks")
+            storePassword = "ridesync-test"
+            keyAlias = "ridesync"
+            keyPassword = "ridesync-test"
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("ridesyncTest")
         }
     }
 }

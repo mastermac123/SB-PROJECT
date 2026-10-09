@@ -466,8 +466,10 @@ function Safety() {
 const FAQ = [
   ['How is the cost per seat decided?', 'Drivers see a suggested cost-share based on distance, fuel type and seats. It covers fuel, tolls and wear — RideSync is for sharing costs, so drivers can’t charge more than 1.5× the suggestion.'],
   ['What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this ride?” on any ride to see the breakdown.'],
-  ['What if my driver cancels?', 'You get a full refund to your RideSync Wallet immediately, and we suggest the next best match.'],
-  ['Who can join RideSync?', 'Only current VIT students with a verified @vitstudent.ac.in email and valid register number.'],
+  ['What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'],
+  ['Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'],
+  ['How do I pay?', 'After the driver accepts, pay them directly by UPI (we open GPay, PhonePe or Paytm with the amount filled in), in cash at pickup, or online when RideSync has online payments turned on.'],
+  ['Is my phone number shared?', 'Only with your driver or riders once a seat is confirmed, and never on your public profile.'],
 ]
 
 function Help() {

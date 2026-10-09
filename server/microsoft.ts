@@ -37,9 +37,26 @@ export async function collegeTenantId(): Promise<string> {
 }
 
 // Pending sign-ins (state → PKCE verifier, nonce, return path). Short-lived and single-use.
-const pending = new Map<string, { verifier: string; nonce: string; from: string; at: number }>()
+const pending = new Map<string, { verifier: string; nonce: string; from: string; at: number; app: boolean }>()
+
+/**
+ * The Android/iOS app signs in through the phone's browser and comes back to
+ * ridesync://auth?code=… with a one-time code (valid 2 minutes), which it swaps
+ * for its login token at POST /api/auth/app/exchange. The token itself never
+ * appears in a URL.
+ */
+const APP_RETURN = 'ridesync://auth'
+const handoffs = new Map<string, { userId: string; isNew: boolean; at: number }>()
+
+export function takeHandoff(code: string) {
+  const h = handoffs.get(code)
+  handoffs.delete(code)
+  if (!h || Date.now() - h.at > 2 * 60_000) return null
+  return h
+}
 setInterval(() => {
   for (const [k, v] of pending) if (Date.now() - v.at > 10 * 60_000) pending.delete(k)
+  for (const [k, v] of handoffs) if (Date.now() - v.at > 2 * 60_000) handoffs.delete(k)
 }, 60_000).unref()
 
 function baseUrl(req: Request) {
@@ -53,7 +70,7 @@ export async function microsoftStart(req: Request, res: Response) {
   const state = b64url(randomBytes(24))
   const verifier = b64url(randomBytes(48))
   const nonce = b64url(randomBytes(24))
-  pending.set(state, { verifier, nonce, from: safeFrom(req.query.from), at: Date.now() })
+  pending.set(state, { verifier, nonce, from: safeFrom(req.query.from), at: Date.now(), app: req.query.app === '1' })
   const params = new URLSearchParams({
     client_id: env.microsoft.clientId,
     response_type: 'code',
@@ -71,8 +88,9 @@ export async function microsoftStart(req: Request, res: Response) {
 }
 
 export async function microsoftCallback(req: Request, res: Response) {
-  const fail = (msg: string) => res.redirect(`/login?error=${encodeURIComponent(msg)}`)
   const { code, state, error, error_description } = req.query as Record<string, string | undefined>
+  const forApp = !!(state && pending.get(state)?.app)
+  const fail = (msg: string) => res.redirect(forApp ? `${APP_RETURN}?error=${encodeURIComponent(msg)}` : `/login?error=${encodeURIComponent(msg)}`)
   if (error) {
     if (error === 'access_denied' || error === 'consent_required' || /AADSTS65001|AADSTS90094/.test(error_description ?? ''))
       return fail('Your college account needs IT admin approval for RideSync. Use the email code option meanwhile.')
@@ -108,7 +126,12 @@ export async function microsoftCallback(req: Request, res: Response) {
     const email = String(payload.email || payload.preferred_username || payload.upn || '').toLowerCase()
     if (!isCollegeEmail(email, env.allowedDomain)) return fail(`Use your @${env.allowedDomain} college account.`)
 
-    const { user } = upsertUser(email, { name: typeof payload.name === 'string' ? payload.name : undefined })
+    const { user, isNew } = upsertUser(email, { name: typeof payload.name === 'string' ? payload.name : undefined })
+    if (p.app) {
+      const handoff = b64url(randomBytes(24))
+      handoffs.set(handoff, { userId: String(user.id), isNew, at: Date.now() })
+      return res.redirect(`${APP_RETURN}?code=${handoff}`)
+    }
     startSession(res, String(user.id))
     res.redirect(Number(user.onboarded) ? p.from : '/onboarding')
   } catch (e) {

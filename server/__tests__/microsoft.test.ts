@@ -37,9 +37,9 @@ async function idToken(claims: Record<string, unknown>, tid = TENANT) {
 }
 
 /** Start sign-in, then complete the callback with a token Microsoft would return. */
-async function signIn(claims: Record<string, unknown>, tid?: string) {
+async function signIn(claims: Record<string, unknown>, tid?: string, startPath = '/api/auth/microsoft/start?from=/rides') {
   const agent = request.agent(app)
-  const start = await agent.get('/api/auth/microsoft/start?from=/rides')
+  const start = await agent.get(startPath)
   expect(start.status).toBe(302)
   const url = new URL(start.headers.location)
   const state = url.searchParams.get('state')!
@@ -55,6 +55,28 @@ async function signIn(claims: Record<string, unknown>, tid?: string) {
 }
 
 describe('Sign in with Microsoft', () => {
+  it('hands the Android/iOS app a one-time code, swapped once for a login token', async () => {
+    const { cb } = await signIn({ name: 'Diya Rao', preferred_username: 'diya.rao@vit.edu.in' }, undefined, '/api/auth/microsoft/start?app=1')
+    expect(cb.status).toBe(302)
+    expect(cb.headers['set-cookie']).toBeUndefined()
+    const back = new URL(cb.headers.location)
+    expect(back.protocol + back.host + back.pathname).toBe('ridesync:auth')
+    const code = back.searchParams.get('code')!
+    const APP = { 'x-ridesync': '1', 'x-ridesync-app': '1' }
+    const ex = await request(app).post('/api/auth/app/exchange').set(APP).send({ code })
+    expect(ex.status).toBe(200)
+    expect(ex.body).toMatchObject({ isNew: true, user: { email: 'diya.rao@vit.edu.in' } })
+    const me = await request(app).get('/api/me').set({ ...APP, Authorization: `Bearer ${ex.body.token}` })
+    expect(me.body.email).toBe('diya.rao@vit.edu.in')
+    // single use
+    expect((await request(app).post('/api/auth/app/exchange').set(APP).send({ code })).status).toBe(400)
+  })
+
+  it('sends app sign-in errors back to the app', async () => {
+    const { cb } = await signIn({ preferred_username: 'someone@gmail.com' }, undefined, '/api/auth/microsoft/start?app=1')
+    expect(cb.headers.location).toMatch(/^ridesync:\/\/auth\?error=/)
+  })
+
   it('sends students to the college tenant with PKCE and a domain hint', async () => {
     const res = await request(app).get('/api/auth/microsoft/start')
     const url = new URL(res.headers.location)

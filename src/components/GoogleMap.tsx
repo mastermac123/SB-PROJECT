@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { drawRoute, glide } from '@/lib/glide'
 import { loadGoogleMaps } from './googleLoader'
 import { markerHtml, ROUTE_STYLE, type MapMarker, type MapViewProps } from './MapView'
 
-type HtmlMarker = google.maps.OverlayView & { el: HTMLDivElement; update(m: MapMarker): void; setPosition(p: google.maps.LatLngLiteral): void }
+type HtmlMarker = google.maps.OverlayView & { el: HTMLDivElement; pos: google.maps.LatLngLiteral; update(m: MapMarker): void; setPosition(p: google.maps.LatLngLiteral): void }
 
 /** Quieter Google basemap so routes and pins stand out (business pins and transit icons hidden). */
 const STYLES: google.maps.MapTypeStyle[] = [
@@ -16,7 +17,7 @@ const STYLES: google.maps.MapTypeStyle[] = [
 function makeMarkerClass(g: typeof google.maps) {
   return class extends g.OverlayView {
     el = document.createElement('div')
-    private pos: google.maps.LatLngLiteral
+    pos: google.maps.LatLngLiteral
     private size = 18
     constructor(m: MapMarker) {
       super()
@@ -61,6 +62,7 @@ export default function GoogleMap({
   center = { lat: 19.0222, lng: 72.8711 },
   zoom = 12,
   interactive = true,
+  animateRoutes = true,
   follow,
 }: MapViewProps & { browserKey: string }) {
   const el = useRef<HTMLDivElement>(null)
@@ -68,6 +70,8 @@ export default function GoogleMap({
   const Marker = useRef<ReturnType<typeof makeMarkerClass> | null>(null)
   const markerRefs = useRef(new Map<string, { marker: HtmlMarker; sig: string }>())
   const lines = useRef<google.maps.Polyline[]>([])
+  const gliding = useRef(new Map<string, () => void>())
+  const stopDraw = useRef<() => void>(undefined)
   const [ready, setReady] = useState(false)
 
   // Create the map once the API has loaded.
@@ -110,6 +114,8 @@ export default function GoogleMap({
     if (!m || !ready) return
     for (const l of lines.current) l.setMap(null)
     lines.current = []
+    stopDraw.current?.()
+    stopDraw.current = undefined
     for (const r of routes) {
       const kind = r.kind ?? 'primary'
       const style = ROUTE_STYLE[kind]
@@ -133,6 +139,15 @@ export default function GoogleMap({
         lines.current.push(
           new google.maps.Polyline({ map: m, path, clickable: false, strokeColor: style.line.color, strokeWeight: style.line.weight, strokeOpacity: style.line.opacity, zIndex: z + 1 }),
         )
+        // The main route draws itself from pickup to destination.
+        if (kind === 'primary' && animateRoutes) {
+          const casing = lines.current.at(-2)!
+          const line = lines.current.at(-1)!
+          stopDraw.current = drawRoute(path, (partial) => {
+            casing.setPath(partial)
+            line.setPath(partial)
+          })
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,7 +164,13 @@ export default function GoogleMap({
       const sig = `${mk.kind}|${mk.label}|${mk.sublabel}|${mk.darkLabel}`
       const existing = markerRefs.current.get(mk.id)
       if (existing && existing.sig === sig) {
-        existing.marker.setPosition({ lat: mk.at.lat, lng: mk.at.lng })
+        if (mk.kind === 'car') {
+          // The car glides between GPS updates like in a ride app.
+          gliding.current.get(mk.id)?.()
+          gliding.current.set(mk.id, glide(existing.marker.pos, mk.at, (p) => existing.marker.setPosition(p)))
+        } else {
+          existing.marker.setPosition({ lat: mk.at.lat, lng: mk.at.lng })
+        }
         if (mk.kind === 'car') {
           const arrow = existing.marker.el.querySelector<HTMLElement>('.mk-car__arrow')
           if (arrow) arrow.style.transform = `rotate(${mk.heading ?? 0}deg)`
@@ -168,6 +189,8 @@ export default function GoogleMap({
       if (!seen.has(id)) {
         ref.marker.setMap(null)
         markerRefs.current.delete(id)
+        gliding.current.get(id)?.()
+        gliding.current.delete(id)
       }
     }
   }, [markers, ready])

@@ -8,6 +8,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import 'motion.dart';
 
 void toast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
@@ -227,19 +228,28 @@ class Panel extends StatelessWidget {
   final EdgeInsets padding;
   final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
+  Widget build(BuildContext context) => PressScale(
+        onTap: onTap,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
+        ),
       );
 }
 
 /// Loads data and reloads it whenever the server says something changed —
 /// so every screen stays live like a ride app should.
 class LiveLoader<T> extends StatefulWidget {
-  const LiveLoader({super.key, required this.load, required this.builder, this.empty});
+  const LiveLoader({super.key, required this.load, required this.builder, this.empty, this.loading, this.refreshable = true});
   final Future<T> Function(Api api) load;
   final Widget Function(BuildContext context, T data, Future<void> Function() reload) builder;
   final Widget? empty;
+
+  /// Shown on first load (defaults to shimmering placeholder cards).
+  final Widget? loading;
+
+  /// Pull to refresh. Off for map screens, where the sheet itself scrolls.
+  final bool refreshable;
 
   @override
   State<LiveLoader<T>> createState() => _LiveLoaderState<T>();
@@ -281,8 +291,9 @@ class _LiveLoaderState<T> extends State<LiveLoader<T>> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading && _data == null) return const Busy();
-    if (_data == null) return ErrorRetry(error: _error ?? 'error', onRetry: _reload);
-    return RefreshIndicator(color: RS.primary, onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
+    if (_loading && _data == null) return widget.loading ?? const SkeletonList();
+    if (_data == null) return Material(color: RS.canvas, child: SafeArea(child: Center(child: ErrorRetry(error: _error ?? 'error', onRetry: _reload))));
+    final body = widget.builder(context, _data as T, _reload);
+    return widget.refreshable ? RefreshIndicator(color: RS.primary, onRefresh: _reload, child: body) : body;
   }
 }

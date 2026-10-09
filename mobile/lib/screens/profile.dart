@@ -51,11 +51,15 @@ class ProfileTab extends StatelessWidget {
           _group([
             _row(Icons.person_outline, 'Personal information', u.phone.isEmpty ? null : '+91 ${u.phone}', () => open(const EditProfileScreen())),
             _row(Icons.directions_car_outlined, 'My car', u.vehicle == null ? 'Add your car to offer rides' : '${u.vehicle!.title} · ${u.vehicle!.plate}', () => open(const VehicleScreen())),
+            _row(Icons.tune_rounded, 'Preferences', 'Commute mode and ride preferences', () => open(const PreferencesScreen())),
+            _row(Icons.account_balance_wallet_outlined, 'Payment methods', u.upiId ?? 'Add your UPI ID to receive payments', () => open(const PaymentMethodsScreen())),
+            _row(Icons.notifications_none_rounded, 'Notifications', 'Ride updates and messages', () => open(const NotificationSettingsScreen())),
             _row(Icons.shield_outlined, 'Safety', u.emergencyContacts.isEmpty ? 'Add emergency contacts' : '${u.emergencyContacts.length} emergency contact${u.emergencyContacts.length == 1 ? '' : 's'}', () => open(const SafetyScreen())),
             _row(Icons.receipt_long_outlined, 'Payments', 'Rides you paid for and received', () => open(const PaymentsScreen())),
           ]),
           const SectionTitle('App'),
           _group([
+            _row(Icons.help_outline_rounded, 'Help & support', 'FAQ and how RideSync works', () => open(const HelpScreen())),
             if (!session.hasBuiltInServer) _row(Icons.dns_outlined, 'Change server', session.server, () => session.changeServer()),
             _row(Icons.logout, 'Log out', null, () => session.signOut()),
             _row(Icons.delete_outline, 'Delete account', 'Permanently remove your account', () => _delete(context), danger: true),
@@ -120,6 +124,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final _name = TextEditingController(text: _u.name);
   late final _phone = TextEditingController(text: _u.phone);
   late final _upi = TextEditingController(text: _u.upiId);
+  late final _programme = TextEditingController(text: _u.programme);
   late String? _photo = _u.photo;
   late String _gender = _u.gender;
   Map<String, String?> _errors = {};
@@ -132,7 +137,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _saving = true);
     final session = context.read<Session>();
     try {
-      final u = await session.api.updateMe({'name': _name.text.trim(), 'phone': _phone.text.trim(), 'gender': _gender, 'upiId': _upi.text.trim(), 'photo': ?_photo});
+      final u = await session.api.updateMe({'name': _name.text.trim(), 'phone': _phone.text.trim(), 'gender': _gender, 'upiId': _upi.text.trim(), 'programme': _programme.text.trim(), 'photo': ?_photo});
       session.setUser(u);
       if (mounted) {
         toast(context, 'Profile saved');
@@ -152,6 +157,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           TextField(controller: _name, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: 'Full name', errorText: _errors['name'])),
           const SizedBox(height: 14),
           TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'Mobile number', prefixText: '+91 ', errorText: _errors['phone'])),
+          const SizedBox(height: 14),
+          TextField(controller: _programme, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Programme / branch (optional)', hintText: 'e.g. B.E. Computer Engineering, 3rd year')),
           const SizedBox(height: 14),
           TextField(controller: _upi, autocorrect: false, decoration: InputDecoration(labelText: 'UPI ID (drivers)', hintText: 'yourname@okaxis', errorText: _errors['upi'] ?? _errors['upiId'])),
           const SizedBox(height: 14),
@@ -305,5 +312,176 @@ class PaymentsScreen extends StatelessWidget {
             ]);
           },
         ),
+      );
+}
+
+
+class PreferencesScreen extends StatefulWidget {
+  const PreferencesScreen({super.key});
+  @override
+  State<PreferencesScreen> createState() => _PreferencesScreenState();
+}
+
+class _PreferencesScreenState extends State<PreferencesScreen> {
+  Future<void> _set(Map<String, dynamic> patch) async {
+    final session = context.read<Session>();
+    try {
+      session.setUser(await session.api.updateMe(patch));
+    } catch (e) {
+      if (mounted) toast(context, errorText(e));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = context.watch<Session>().user!;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Preferences')),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        Text('How you commute', style: RS.heading(17)),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'driver', label: Text('I have a car')),
+            ButtonSegment(value: 'rider', label: Text('I need a ride')),
+            ButtonSegment(value: 'both', label: Text('Both')),
+          ],
+          selected: {u.commute ?? 'both'},
+          showSelectedIcon: false,
+          onSelectionChanged: (v) => _set({'commute': v.first}),
+        ),
+        if (u.commute != 'rider' && u.vehicle == null) ...[
+          const SizedBox(height: 12),
+          Notice('Add your car to start offering rides.', tone: 'warning', icon: Icons.directions_car_outlined),
+          TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleScreen())), child: const Text('Add car')),
+        ],
+        const SizedBox(height: 28),
+        Text('Ride preferences', style: RS.heading(17)),
+        const SizedBox(height: 4),
+        const Text('Applied by default when you search or offer. AI matching scores rides higher when they fit.', style: TextStyle(color: RS.ink500)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final e in preferenceLabel.entries)
+            FilterChip(
+              label: Text(e.value),
+              selected: u.preferences.contains(e.key),
+              showCheckmark: false,
+              onSelected: (on) => _set({'preferences': on ? [...u.preferences, e.key] : u.preferences.where((x) => x != e.key).toList()}),
+            ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class PaymentMethodsScreen extends StatefulWidget {
+  const PaymentMethodsScreen({super.key});
+  @override
+  State<PaymentMethodsScreen> createState() => _PaymentMethodsScreenState();
+}
+
+class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
+  late final _upi = TextEditingController(text: context.read<Session>().user!.upiId);
+  String? _error;
+  bool _saving = false;
+
+  Future<void> _save() async {
+    final v = _upi.text.trim();
+    if (v.isNotEmpty && validateUpiId(v) != null) return setState(() => _error = validateUpiId(v));
+    setState(() => (_saving = true, _error = null));
+    final session = context.read<Session>();
+    try {
+      session.setUser(await session.api.updateMe({'upiId': v}));
+      if (mounted) {
+        toast(context, v.isEmpty ? 'UPI ID removed' : 'UPI ID saved');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) setState(() => (_saving = false, _error = errorText(e)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final online = context.read<Session>().config?.razorpayKeyId != null;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Payment methods')),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        Text('Receive cost-share', style: RS.heading(17)),
+        const SizedBox(height: 4),
+        const Text('When you drive, riders pay you directly from Google Pay, PhonePe, Paytm or any UPI app using this ID.', style: TextStyle(color: RS.ink500, height: 1.4)),
+        const SizedBox(height: 14),
+        TextField(controller: _upi, autocorrect: false, decoration: InputDecoration(labelText: 'Your UPI ID', hintText: 'yourname@okaxis', errorText: _error)),
+        const SizedBox(height: 24),
+        Text('Paying for rides', style: RS.heading(17)),
+        const SizedBox(height: 4),
+        Text(
+          'After a driver accepts, pay them by UPI (we open your UPI app with the amount filled in, or show a QR code), in cash at pickup${online ? ', or online with UPI, cards or netbanking — refunded automatically if the ride is cancelled' : ''}.',
+          style: const TextStyle(color: RS.ink500, height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        const Notice('RideSync never asks for your UPI PIN and charges no fees.', icon: Icons.shield_outlined),
+        const SizedBox(height: 24),
+        LoadingButton(label: 'Save', loading: _saving, onPressed: _save),
+      ]),
+    );
+  }
+}
+
+class NotificationSettingsScreen extends StatelessWidget {
+  const NotificationSettingsScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Notifications')),
+        body: ListView(padding: const EdgeInsets.all(20), children: const [
+          Notice('Notifications are on. You get instant alerts for requests, acceptances, arrivals and messages while RideSync is open.', tone: 'success', icon: Icons.notifications_active_outlined),
+          SizedBox(height: 16),
+          Card(
+            child: Column(children: [
+              ListTile(title: Text('Ride updates'), subtitle: Text('Requests, acceptances, arrivals, cancellations'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              Divider(indent: 16),
+              ListTile(title: Text('Messages'), subtitle: Text('Chat from drivers and riders'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              Divider(indent: 16),
+              ListTile(title: Text('Payments'), subtitle: Text('When a rider pays or a driver confirms'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+            ]),
+          ),
+        ]),
+      );
+}
+
+const _faq = [
+  ('How is the cost per seat decided?', 'Drivers see a suggested cost-share based on distance, fuel type and seats. It covers fuel, tolls and wear — RideSync is for sharing costs, so drivers can’t charge more than 1.5× the suggestion.'),
+  ('What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this match?” on any ride to see the breakdown.'),
+  ('What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'),
+  ('Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'),
+  ('How do I pay?', 'After the driver accepts, pay them directly by UPI (we open GPay, PhonePe or Paytm with the amount filled in), in cash at pickup, or online when RideSync has online payments turned on.'),
+  ('Is my phone number shared?', 'Only with your driver or riders once a seat is confirmed, and never on your public profile.'),
+];
+
+class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Help & support')),
+        body: ListView(padding: const EdgeInsets.all(16), children: [
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: [
+              for (final (i, (q, a)) in _faq.indexed) ...[
+                if (i > 0) const Divider(indent: 16),
+                ExpansionTile(
+                  initiallyExpanded: i == 0,
+                  shape: const Border(),
+                  leading: const Icon(Icons.help_outline_rounded, color: RS.primary),
+                  title: Text(q, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  childrenPadding: const EdgeInsets.fromLTRB(56, 0, 16, 16),
+                  children: [Text(a, style: const TextStyle(color: RS.ink700, height: 1.45))],
+                ),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 16),
+          const Notice('Need help with a ride? Message your driver or rider from the trip, or use SOS during a ride for emergencies.', icon: Icons.support_agent_rounded),
+        ]),
       );
 }

@@ -1,17 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:provider/provider.dart';
 
 import '../state/session.dart';
 import '../theme.dart';
+import '../api/api.dart';
 import '../widgets/common.dart';
+import '../widgets/motion.dart';
+import '../widgets/route_art.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: RS.surface,
-        body: Center(child: Image.asset('assets/ridesync-logo.png', width: 220)),
+        body: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.85, end: 1),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutBack,
+            builder: (_, v, child) => Opacity(opacity: ((v - 0.85) / 0.15).clamp(0, 1), child: Transform.scale(scale: v, child: child)),
+            child: Image.asset('assets/ridesync-logo.png', width: 220),
+          ),
+        ),
       );
 }
 
@@ -94,9 +106,31 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _code = TextEditingController();
+  bool _landing = true;
+  void _openLogin() => setState(() => _landing = false);
   bool _codeStep = false;
   bool _busy = false;
   String? _error;
+
+  /// Sign in with Microsoft in the phone's browser, then swap the one-time code for a login.
+  Future<void> _microsoft() async {
+    setState(() => (_busy = true, _error = null));
+    final session = context.read<Session>();
+    try {
+      final result = await FlutterWebAuth2.authenticate(url: session.api.microsoftStartUrl, callbackUrlScheme: 'ridesync');
+      final uri = Uri.parse(result);
+      final err = uri.queryParameters['error'];
+      if (err != null) throw ApiError(err);
+      final code = uri.queryParameters['code'];
+      if (code == null) throw const ApiError('Microsoft sign-in didn’t finish. Please try again.');
+      final (user, token) = await session.api.appExchange(code);
+      await session.signedIn(user, token);
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => (_busy = false, _error = e.code == 'CANCELED' ? null : 'Couldn’t open Microsoft sign-in. Use the email code instead.'));
+    } catch (e) {
+      if (mounted) setState(() => (_busy = false, _error = errorText(e)));
+    }
+  }
 
   String get _domain => context.read<Session>().config?.allowedDomain ?? 'vit.edu.in';
   String get _cleanEmail => _email.text.trim().toLowerCase();
@@ -156,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
     final cfg = session.config;
+    if (_landing && !_codeStep) return _landingView(session);
     if (_codeStep) {
       return _AuthFrame(
         title: 'Check your email',
@@ -184,9 +219,34 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
     return _AuthFrame(
-      title: 'Welcome to RideSync',
-      subtitle: 'Smart rides, shared journeys. Sign in with your @$_domain college email — RideSync is only for VIT students.',
+      title: 'Sign in',
+      subtitle: 'Use your @$_domain college account. RideSync is only for VIT students — new accounts are created automatically.',
+      onBack: () => setState(() => (_landing = true, _error = null)),
       children: [
+        if (cfg?.microsoftLogin == true) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _busy ? null : _microsoft,
+              style: OutlinedButton.styleFrom(minimumSize: const Size(64, 52)),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: GridView.count(crossAxisCount: 2, mainAxisSpacing: 2, crossAxisSpacing: 2, physics: const NeverScrollableScrollPhysics(), children: [
+                    for (final c in const [Color(0xFFF25022), Color(0xFF7FBA00), Color(0xFF00A4EF), Color(0xFFFFB900)]) ColoredBox(color: c),
+                  ]),
+                ),
+                const SizedBox(width: 10),
+                const Text('Sign in with Microsoft'),
+              ]),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Row(children: [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('or get a code by email', style: TextStyle(color: RS.ink500, fontSize: 13))), Expanded(child: Divider())]),
+          ),
+        ],
         if (session.startupError != null) ...[
           Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'),
           const SizedBox(height: 8),
@@ -223,4 +283,50 @@ class _LoginScreenState extends State<LoginScreen> {
       ],
     );
   }
+}
+
+extension on _LoginScreenState {
+  Widget _landingView(Session session) => Scaffold(
+        backgroundColor: RS.surface,
+        body: SafeArea(
+          child: ListView(padding: const EdgeInsets.fromLTRB(24, 16, 24, 28), children: [
+            Image.asset('assets/ridesync-logo.png', height: 32, alignment: Alignment.centerLeft),
+            const SizedBox(height: 22),
+            const FadeSlideIn(child: RouteArt(height: 250)),
+            const SizedBox(height: 24),
+            FadeSlideIn(index: 1, child: Pill('Only for @$_domain students', icon: Icons.verified, color: RS.success, background: RS.success50)),
+            const SizedBox(height: 12),
+            FadeSlideIn(index: 2, child: Text('Smart rides.\nShared journeys.', style: RS.heading(34))),
+            const SizedBox(height: 8),
+            const FadeSlideIn(index: 3, child: Text('AI-powered carpooling built exclusively for the VIT community.', style: TextStyle(color: RS.ink500, fontSize: 16, height: 1.4))),
+            const SizedBox(height: 22),
+            for (final (i, (icon, title, body)) in const [
+              (Icons.directions_car_rounded, 'Offer a ride', 'Share empty seats on trips you’re already taking.'),
+              (Icons.auto_awesome, 'Find a ride', 'AI matches you with VIT drivers heading your way.'),
+              (Icons.payments_outlined, 'Split the cost', 'Fair cost-sharing by UPI or cash. No surge pricing.'),
+            ].indexed)
+              FadeSlideIn(
+                index: 4 + i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(children: [
+                    CircleAvatar(radius: 18, backgroundColor: RS.primary50, child: Icon(icon, color: RS.primary, size: 18)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        Text(body, style: const TextStyle(color: RS.ink500, fontSize: 13)),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (session.startupError != null) ...[Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'), const SizedBox(height: 12)],
+            LoadingButton(label: 'Create account', onPressed: _openLogin),
+            const SizedBox(height: 10),
+            LoadingButton(label: 'Log in', secondary: true, onPressed: _openLogin),
+          ]),
+        ),
+      );
 }
