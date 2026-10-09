@@ -1,4 +1,5 @@
 import {
+  Server,
   Bell,
   CarFront,
   ChevronRight,
@@ -34,6 +35,7 @@ import type { CommuteMode, Gender, RidePreference } from '@/lib/types'
 import { validatePhone, validateStudentId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
 import { ApiError, auth, deleteAccount, notificationPermission, removeVehicle, requestNotificationPermission, saveVehicle, updateMe, useMe } from '@/services/api'
+import { apiBase, builtInServer, forgetServer, isApp } from '@/services/native'
 import { PREF_OPTIONS } from './find'
 
 export function Profile() {
@@ -531,6 +533,23 @@ export function Settings() {
             <ListRow icon={<Layers />} title="Screen states" subtitle="Empty, loading and error states" onClick={() => nav('/states')} />
           </div>
         </section>
+
+        {isApp && !builtInServer && (
+          <section className="section">
+            <h2 className="section__title">Test server</h2>
+            <div className="list">
+              <ListRow
+                icon={<Server />}
+                title="Change server"
+                subtitle={apiBase()}
+                onClick={async () => {
+                  await forgetServer()
+                  window.location.replace('/')
+                }}
+              />
+            </div>
+          </section>
+        )}
 
         <section className="section">
           <h2 className="section__title">Danger zone</h2>

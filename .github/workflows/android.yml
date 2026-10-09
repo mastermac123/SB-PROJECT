@@ -1,0 +1,64 @@
+name: Android app
+
+# Builds the RideSync Android app (APK) on every push to main, or by hand from the Actions tab.
+# The APK is attached to the "Android app (latest)" release so it can be downloaded on a phone.
+#
+# Optional repository variable RIDESYNC_SERVER_URL (Settings → Secrets and variables → Actions → Variables):
+# the online server address to build into the app. Without it, the app asks for a server link
+# on first launch (e.g. the share.bat link from a laptop).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install
+        run: npm ci
+
+      - name: Build app screens
+        env:
+          VITE_API_URL: ${{ vars.RIDESYNC_SERVER_URL }}
+        run: npx vite build && npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: Publish APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk RideSync.apk
+          gh release delete app-latest --yes --cleanup-tag || true
+          gh release create app-latest RideSync.apk \
+            --title "Android app (latest)" \
+            --prerelease \
+            --notes "Test build of RideSync for Android, from commit ${GITHUB_SHA::7}. On your phone: download RideSync.apk, open it, and allow installing from this source when asked."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RideSync-android
+          path: RideSync.apk

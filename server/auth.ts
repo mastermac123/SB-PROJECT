@@ -29,22 +29,38 @@ function readCookie(req: Request, name: string) {
   return undefined
 }
 
+/** The Android/iOS app sends this header; it keeps its login token on the phone instead of in a cookie. */
+export const isAppClient = (req: Request) => req.get('x-ridesync-app') === '1'
+
+/**
+ * Creates a login. The website gets an httpOnly cookie; the app gets the token
+ * back (returned here) and sends it as `Authorization: Bearer …`.
+ */
 export function startSession(res: Response, userId: string) {
   const token = randomBytes(32).toString('base64url')
   const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000)
   run(`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`, sha(token), userId, nowIso(), expires.toISOString())
-  res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: env.isProd, expires, path: '/' })
+  if (!isAppClient(res.req)) res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: env.isProd, expires, path: '/' })
+  return token
+}
+
+function sessionToken(req: Request) {
+  const auth = req.get('authorization')
+  if (auth?.startsWith('Bearer ')) return auth.slice(7).trim()
+  // EventSource can't send headers, so the app passes its token on the live-updates stream only.
+  if (req.path === '/events' && typeof req.query.token === 'string') return req.query.token
+  return readCookie(req, COOKIE)
 }
 
 export function endSession(req: Request, res: Response) {
-  const token = readCookie(req, COOKIE)
+  const token = sessionToken(req)
   if (token) run(`DELETE FROM sessions WHERE token_hash = ?`, sha(token))
   res.clearCookie(COOKIE, { path: '/' })
 }
 
-/** Attaches req.user when the session cookie is valid. */
+/** Attaches req.user when the session cookie or app token is valid. */
 export function loadUser(req: Request, _res: Response, next: NextFunction) {
-  const token = readCookie(req, COOKIE)
+  const token = sessionToken(req)
   if (token) {
     const s = one(`SELECT user_id, expires_at FROM sessions WHERE token_hash = ?`, sha(token))
     if (s && new Date(String(s.expires_at)) > new Date()) {

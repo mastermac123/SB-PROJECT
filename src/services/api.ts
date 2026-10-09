@@ -19,6 +19,7 @@ import type {
   User,
   Vehicle,
 } from '@/lib/types'
+import { apiBase, authToken, isApp, setToken } from './native'
 
 /* ==========================================================================
    Transport
@@ -41,11 +42,16 @@ const CODE: Record<number, ApiErrorCode> = { 400: 'validation', 401: 'auth', 403
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
+  const headers: Record<string, string> = { 'x-ridesync': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) }
+  if (isApp) {
+    headers['x-ridesync-app'] = '1'
+    if (authToken()) headers.Authorization = `Bearer ${authToken()}`
+  }
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${apiBase()}/api${path}`, {
       method,
-      credentials: 'same-origin',
-      headers: { 'x-ridesync': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      credentials: isApp ? 'omit' : 'same-origin',
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
@@ -54,6 +60,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     throw new ApiError(CODE[res.status] ?? 'server', data.error ?? 'Something went wrong. Please try again.', data.field, res.status)
+  }
+  // The app keeps its login token on the phone (the website uses a cookie instead).
+  if (isApp && path.startsWith('/auth/') && typeof data.token === 'string') {
+    setToken(data.token)
+    delete data.token
   }
   return data as T
 }
@@ -154,7 +165,9 @@ let connected = false
 
 export function connectEvents() {
   if (source) return
-  source = new EventSource('/api/events', { withCredentials: true })
+  source = isApp
+    ? new EventSource(`${apiBase()}/api/events?token=${encodeURIComponent(authToken())}`)
+    : new EventSource('/api/events', { withCredentials: true })
   source.onopen = () => {
     connected = true
     connListeners.forEach((l) => l())
@@ -288,6 +301,7 @@ const afterLogin = (r: AuthResult) => {
 }
 
 function signedOut() {
+  if (isApp) setToken(null)
   disconnectEvents()
   cache.clear()
   cache.set('/me', { loading: false, subs: 0, error: new ApiError('auth', 'Signed out', undefined, 401) })

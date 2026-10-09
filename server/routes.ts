@@ -13,7 +13,7 @@ import type {
   Trips,
 } from '../src/lib/types'
 import { formatPlate, validatePhone, validatePlate, validateStudentId } from '../src/lib/validation'
-import { endSession, otpEnabled, requestCode, requireOnboarded, requireUser, startSession, upsertUser, verifyCode, verifyGoogle } from './auth'
+import { endSession, isAppClient, otpEnabled, requestCode, requireOnboarded, requireUser, startSession, upsertUser, verifyCode, verifyGoogle } from './auth'
 import { all, one, run, tx, type Row } from './db'
 import { env } from './env'
 import { addStream, broadcastSync, emit, sync } from './events'
@@ -108,8 +108,8 @@ api.post(
     const { credential } = parse(z.object({ credential: z.string().min(20) }), req.body)
     const profile = await verifyGoogle(credential)
     const { user, isNew } = upsertUser(profile.email, profile)
-    startSession(res, String(user.id))
-    return { user: meUser(user), isNew }
+    const token = startSession(res, String(user.id))
+    return { user: meUser(user), isNew, ...(isAppClient(req) ? { token } : {}) }
   }),
 )
 
@@ -128,8 +128,8 @@ api.post(
     const { email, code } = parse(z.object({ email: z.string().email(), code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code') }), req.body)
     const verified = verifyCode(email, code)
     const { user, isNew } = upsertUser(verified)
-    startSession(res, String(user.id))
-    return { user: meUser(user), isNew }
+    const token = startSession(res, String(user.id))
+    return { user: meUser(user), isNew, ...(isAppClient(req) ? { token } : {}) }
   }),
 )
 
@@ -139,8 +139,8 @@ api.post(
     if (!env.devLogin) throw new HttpError(404, 'Not found')
     const { email } = parse(z.object({ email: z.string().email() }), req.body)
     const { user, isNew } = upsertUser(email)
-    startSession(res, String(user.id))
-    return { user: meUser(user), isNew }
+    const token = startSession(res, String(user.id))
+    return { user: meUser(user), isNew, ...(isAppClient(req) ? { token } : {}) }
   }),
 )
 
