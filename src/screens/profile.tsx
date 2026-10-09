@@ -13,13 +13,11 @@ import {
   Palette,
   Phone,
   Plus,
-  RotateCcw,
   Settings as SettingsIcon,
   ShieldCheck,
   SlidersHorizontal,
   Trash,
   UserRound,
-  WifiOff,
   Layers,
   Music,
   Snowflake,
@@ -29,20 +27,17 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog, ModalSheet } from '@/components/Sheet'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
-import { Avatar, Button, Chip, Divider, Field, ListRow, Notice, Plate, Segmented, Switch, VerifiedBadge } from '@/components/ui'
-import { CAMPUSES } from '@/data/places'
+import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, VerifiedBadge } from '@/components/ui'
 import { PREFERENCE_LABEL } from '@/lib/matching'
-import type { CommuteMode, RidePreference } from '@/lib/types'
-import { formatPlate, validatePhone } from '@/lib/validation'
+import type { CommuteMode, Gender, RidePreference } from '@/lib/types'
+import { validatePhone, validateStudentId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
-import { ApiError, logout, me, updateMe, updateSettings, walletBalance, requestNotificationPermission } from '@/services/api'
-import { resetDB, useDB } from '@/services/db'
-import { money } from '@/lib/format'
+import { ApiError, auth, deleteAccount, notificationPermission, removeVehicle, requestNotificationPermission, saveVehicle, updateMe, useMe } from '@/services/api'
 import { PREF_OPTIONS } from './find'
 
 export function Profile() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
   const [signOut, setSignOut] = useState(false)
 
@@ -50,14 +45,14 @@ export function Profile() {
     <Page title="Profile" back={false} actions={<button className="icon-btn" aria-label="Settings" onClick={() => nav('/settings')} style={{ marginRight: 4 }}><SettingsIcon /></button>}>
       <div className="stack gap-6">
         <div className="profile-head">
-          <Avatar name={u.name} src={u.photo} size="xl" verified={u.verified} />
+          <Avatar name={u.name} src={u.photo} size="xl" verified />
           <div className="stack gap-1" style={{ alignItems: 'center' }}>
             <h1 className="t-h2">{u.name}</h1>
             <span className="t-sm t-muted">
-              {u.studentId} · {CAMPUSES[u.campus].name}
+              {u.studentId} · {u.email}
             </span>
           </div>
-          {u.verified ? <VerifiedBadge /> : <span className="badge badge--warning">Verification pending</span>}
+          <VerifiedBadge />
         </div>
 
         <div className="card stats">
@@ -70,7 +65,7 @@ export function Profile() {
             <span className="stat__label">Rides offered</span>
           </div>
           <div className="stat">
-            <span className="stat__value">★ {u.rating.toFixed(1)}</span>
+            <span className="stat__value">{u.rating ? `★ ${u.rating.toFixed(1)}` : 'New'}</span>
             <span className="stat__label">Rating</span>
           </div>
           <div className="stat">
@@ -81,7 +76,7 @@ export function Profile() {
 
         {u.co2SavedKg > 0 && (
           <Notice tone="success" icon={<Leaf />}>
-            Sharing rides has saved about {Math.round(u.co2SavedKg)} kg of CO₂ — roughly {Math.max(1, Math.round(u.co2SavedKg / 21))} {Math.round(u.co2SavedKg / 21) === 1 ? 'tree' : 'trees'} working for a year.
+            Sharing rides has saved about {Math.round(u.co2SavedKg)} kg of CO₂ — what {Math.max(1, Math.round(u.co2SavedKg / 21))} {Math.max(1, Math.round(u.co2SavedKg / 21)) === 1 ? 'tree absorbs' : 'trees absorb'} in a year.
           </Notice>
         )}
 
@@ -89,7 +84,7 @@ export function Profile() {
           <ListRow icon={<UserRound />} title="Personal Information" subtitle={`${u.email}`} onClick={() => nav('/profile/personal')} />
           <ListRow icon={<CarFront />} title="Vehicle Information" subtitle={u.vehicle ? `${u.vehicle.make} ${u.vehicle.model} · ${u.vehicle.plate}` : 'Add a car to offer rides'} onClick={() => nav('/profile/vehicle')} />
           <ListRow icon={<SlidersHorizontal />} title="Preferences" subtitle={u.preferences.length ? u.preferences.map((p) => PREFERENCE_LABEL[p]).join(', ') : 'Commute mode and ride preferences'} onClick={() => nav('/profile/preferences')} />
-          <ListRow icon={<CreditCard />} title="Payment Methods" subtitle={`Wallet ${money(walletBalance(u.id, db))} · UPI · Cards`} onClick={() => nav('/profile/payments')} />
+          <ListRow icon={<CreditCard />} title="Payment Methods" subtitle={u.upiId ? `UPI · ${u.upiId}` : 'Add your UPI ID to receive cost-share'} onClick={() => nav('/profile/payments')} />
           <ListRow icon={<Bell />} title="Notifications" onClick={() => nav('/profile/notifications')} />
           <ListRow icon={<ShieldCheck />} title="Safety" subtitle={u.emergencyContacts?.length ? `${u.emergencyContacts.length} emergency contact` : 'Add an emergency contact'} onClick={() => nav('/profile/safety')} />
           <ListRow icon={<SettingsIcon />} title="Settings" onClick={() => nav('/settings')} />
@@ -106,11 +101,11 @@ export function Profile() {
       <ConfirmDialog
         open={signOut}
         title="Log out of RideSync?"
-        body="You’ll need your VIT email and password to log back in."
+        body="You can log back in anytime with your college account."
         confirmLabel="Log out"
         cancelLabel="Stay logged in"
-        onConfirm={() => {
-          logout()
+        onConfirm={async () => {
+          await auth.logout()
           nav('/welcome', { replace: true })
         }}
         onClose={() => setSignOut(false)}
@@ -146,23 +141,27 @@ export function ProfileSection() {
 }
 
 function Personal() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const toast = useToast()
+  const [name, setName] = useState(u.name)
   const [phone, setPhone] = useState(u.phone)
-  const [gender, setGender] = useState(u.gender ?? 'undisclosed')
-  const [error, setError] = useState<string | null>(null)
+  const [studentId, setStudentId] = useState(u.studentId)
+  const [programme, setProgramme] = useState(u.programme ?? '')
+  const [gender, setGender] = useState<Gender>(u.gender)
+  const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [saving, setSaving] = useState(false)
   async function save() {
-    const e = validatePhone(phone)
-    setError(e)
-    if (e) return
+    const errs = { name: name.trim().length >= 3 ? null : 'Enter your full name', phone: validatePhone(phone), studentId: validateStudentId(studentId) }
+    setErrors(errs)
+    if (Object.values(errs).some(Boolean)) return
     setSaving(true)
     try {
-      await updateMe({ phone: phone.replace(/\D/g, '').slice(-10), gender })
+      await updateMe({ name: name.trim(), phone, studentId, programme: programme.trim(), gender })
       toast({ tone: 'success', message: 'Saved' })
     } catch (err) {
-      toast({ tone: 'error', message: err instanceof ApiError ? err.message : 'Couldn’t save' })
+      if (err instanceof ApiError && err.field) setErrors({ [err.field]: err.message })
+      else toast({ tone: 'error', message: err instanceof ApiError ? err.message : 'Couldn’t save' })
     } finally {
       setSaving(false)
     }
@@ -170,16 +169,17 @@ function Personal() {
   return (
     <Page title="Personal Information" backTo="/profile" narrow footer={<Button size="lg" block loading={saving} onClick={save}>Save changes</Button>}>
       <div className="stack gap-4">
-        <Field label="Full name" value={u.name} disabled hint="Matches your VIT records. Contact support to change it." />
-        <Field label="VIT email" value={u.email} disabled leading={<Mail />} />
-        <Field label="Register number" value={u.studentId} disabled />
-        <Field label="Mobile number" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} error={error} leading={<Phone />} />
+        <Field label="Full name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} leading={<UserRound />} />
+        <Field label="College email" value={u.email} disabled leading={<Mail />} hint="Verified at sign-in. This can’t be changed." />
+        <Field label="Student ID / roll number" value={studentId} onChange={(e) => setStudentId(e.target.value.toUpperCase())} error={errors.studentId} />
+        <Field label="Branch & year" value={programme} onChange={(e) => setProgramme(e.target.value)} placeholder="e.g. Computer Engineering · TE" />
+        <Field label="Mobile number" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} error={errors.phone} leading={<Phone />} hint="Shared only with your driver or riders on confirmed rides." />
         <div className="field">
           <span className="field__label">Gender</span>
-          <Segmented
+          <Segmented<Gender>
             label="Gender"
             value={gender}
-            onChange={(g) => setGender(g)}
+            onChange={setGender}
             options={[
               { value: 'female', label: 'Female' },
               { value: 'male', label: 'Male' },
@@ -195,8 +195,8 @@ function Personal() {
 }
 
 function VehicleSection() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const toast = useToast()
   const [remove, setRemove] = useState(false)
   return (
@@ -220,7 +220,7 @@ function VehicleSection() {
           initial={u.vehicle}
           submitLabel={u.vehicle ? 'Save changes' : 'Add car'}
           onSubmit={async (v) => {
-            await updateMe({ vehicle: { id: u.vehicle?.id ?? `v_${u.id}`, ...v, plate: formatPlate(v.plate) }, commute: u.commute === 'rider' ? 'both' : u.commute })
+            await saveVehicle(v)
             toast({ tone: 'success', message: 'Vehicle saved' })
           }}
           secondary={
@@ -235,13 +235,17 @@ function VehicleSection() {
       <ConfirmDialog
         open={remove}
         title="Remove your vehicle?"
-        body="You won’t be able to offer rides until you add a car again. Rides you’ve already published stay active."
+        body="You won’t be able to offer rides until you add a car again."
         confirmLabel="Remove vehicle"
         destructive
         onConfirm={async () => {
-          await updateMe({ vehicle: undefined, commute: 'rider' })
+          try {
+            await removeVehicle()
+            toast({ tone: 'info', message: 'Vehicle removed' })
+          } catch (e) {
+            toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Couldn’t remove vehicle' })
+          }
           setRemove(false)
-          toast({ tone: 'info', message: 'Vehicle removed' })
         }}
         onClose={() => setRemove(false)}
       />
@@ -252,8 +256,8 @@ function VehicleSection() {
 const ALL_PREFS: { value: RidePreference; icon: React.ReactNode }[] = [...PREF_OPTIONS, { value: 'ac', icon: <Snowflake /> }, { value: 'music_ok', icon: <Music /> }]
 
 function Preferences() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const toast = useToast()
   const set = async (patch: Parameters<typeof updateMe>[0]) => {
     try {
@@ -307,62 +311,73 @@ function Preferences() {
 }
 
 function PaymentMethods() {
-  const db = useDB()
-  const u = me(db)!
-  const nav = useNavigate()
+  const { user } = useMe()
+  const u = user!
   const toast = useToast()
+  const [upi, setUpi] = useState(u.upiId ?? '')
+  const [err, setErr] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  async function save() {
+    if (upi.trim() && !/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/.test(upi.trim())) return setErr('UPI IDs look like name@bank')
+    setSaving(true)
+    try {
+      await updateMe({ upiId: upi.trim() })
+      toast({ tone: 'success', message: upi.trim() ? 'UPI ID saved' : 'UPI ID removed' })
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Couldn’t save')
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
-    <Page title="Payment Methods" backTo="/profile" narrow>
+    <Page title="Payment Methods" backTo="/profile" narrow footer={<Button size="lg" block loading={saving} onClick={save}>Save</Button>}>
       <div className="stack gap-6">
-        <div className="list">
-          <ListRow icon={<CreditCard />} title="RideSync Wallet" subtitle={`Balance ${money(walletBalance(u.id, db))}`} onClick={() => nav('/wallet')} />
-          <ListRow icon={<span className="t-caption t-strong">UPI</span>} title="UPI apps" subtitle="Google Pay, PhonePe, Paytm and any UPI ID" />
-          <ListRow icon={<CreditCard />} title="Credit / Debit cards" subtitle="Visa, Mastercard, RuPay" />
+        <div className="stack gap-2">
+          <h2 className="t-h3">Receive cost-share</h2>
+          <p className="t-sm t-muted">When you drive, riders pay you directly from Google Pay, PhonePe, Paytm or any UPI app using this ID.</p>
         </div>
-        <Button variant="secondary" block icon={<Plus />} onClick={() => toast({ tone: 'info', message: 'Cards are saved securely by the payment gateway at checkout' })}>
-          Add payment method
-        </Button>
-        <Notice icon={<ShieldCheck />}>RideSync never stores card numbers or UPI PINs. Payments run in test mode in this build.</Notice>
+        <Field label="Your UPI ID" placeholder="yourname@okaxis" value={upi} onChange={(e) => { setUpi(e.target.value); setErr(null) }} error={err} />
+        <div className="stack gap-2">
+          <h2 className="t-h3">Paying for rides</h2>
+          <p className="t-sm t-muted">After a driver accepts, pay them by UPI (we open your UPI app with the amount filled in) or in cash at pickup.</p>
+        </div>
+        <Notice icon={<ShieldCheck />}>RideSync never holds your money, never asks for your UPI PIN, and charges no fees.</Notice>
       </div>
     </Page>
   )
 }
 
 function NotificationSettings() {
-  const db = useDB()
-  const s = db.settings
+  const [perm, setPerm] = useState(notificationPermission())
   return (
     <Page title="Notifications" backTo="/profile" narrow>
       <div className="stack gap-6">
-        {s.notificationPermission !== 'granted' && (
+        {perm === 'granted' ? (
+          <Notice tone="success" icon={<Bell />} title="Notifications are on">
+            You’ll get alerts for requests, acceptances, arrivals and messages while RideSync is open in a tab.
+          </Notice>
+        ) : (
           <Notice
-            tone={s.notificationPermission === 'denied' ? 'warning' : 'ai'}
+            tone={perm === 'denied' ? 'warning' : 'ai'}
             icon={<Bell />}
-            title={s.notificationPermission === 'denied' ? 'Blocked in your browser' : s.notificationPermission === 'unsupported' ? 'Not supported on this browser' : 'Push notifications are off'}
-            action={s.notificationPermission === 'unknown' ? <Button size="sm" variant="tonal" onClick={() => requestNotificationPermission()}>Allow</Button> : undefined}
+            title={perm === 'denied' ? 'Blocked in your browser' : perm === 'unsupported' ? 'Not supported on this browser' : 'Notifications are off'}
+            action={perm === 'unknown' ? <Button size="sm" variant="tonal" onClick={async () => setPerm(await requestNotificationPermission())}>Allow</Button> : undefined}
           >
-            {s.notificationPermission === 'denied' ? 'Allow notifications for this site in browser settings to get alerts.' : 'You’ll still see every update inside the app.'}
+            {perm === 'denied' ? 'Allow notifications for this site in your browser settings to get alerts.' : 'You’ll still see every update inside the app.'}
           </Notice>
         )}
         <div className="list">
-          <ToggleRow title="Push notifications" subtitle="Alerts when RideSync is in the background" checked={s.pushEnabled} onChange={(v) => updateSettings({ pushEnabled: v })} />
-          <Divider />
-          <ToggleRow title="Ride updates" subtitle="Requests, acceptances, arrivals, cancellations" checked={s.rideUpdates} onChange={(v) => updateSettings({ rideUpdates: v })} />
-          <ToggleRow title="Messages" subtitle="Chat from drivers and riders" checked={s.chatMessages} onChange={(v) => updateSettings({ chatMessages: v })} />
-          <ToggleRow title="Ride suggestions" subtitle="New AI matches on your usual routes" checked={s.promotions} onChange={(v) => updateSettings({ promotions: v })} />
+          <ListRow title="Ride updates" subtitle="Requests, acceptances, arrivals, cancellations" trailing={<span className="t-sm t-muted">Always on</span>} />
+          <ListRow title="Messages" subtitle="Chat from drivers and riders" trailing={<span className="t-sm t-muted">Always on</span>} />
         </div>
       </div>
     </Page>
   )
 }
 
-function ToggleRow({ title, subtitle, checked, onChange }: { title: string; subtitle?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return <ListRow title={title} subtitle={subtitle} trailing={<Switch label={title} checked={checked} onChange={onChange} />} chevron={false} />
-}
-
 function Safety() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -375,7 +390,7 @@ function Safety() {
         <div className="safety-list">
           <div className="row row--top gap-3">
             <ShieldCheck size={20} className="t-primary" style={{ flex: 'none' }} />
-            <span className="t-sm t-secondary">Every driver and rider is a verified VIT student with a confirmed @vitstudent.ac.in email and register number.</span>
+            <span className="t-sm t-secondary">Every driver and rider signed in with a verified @{u.email.split('@')[1]} college account.</span>
           </div>
           <div className="row row--top gap-3">
             <MessageCircle size={20} className="t-primary" style={{ flex: 'none' }} />
@@ -383,7 +398,7 @@ function Safety() {
           </div>
           <div className="row row--top gap-3">
             <Layers size={20} className="t-primary" style={{ flex: 'none' }} />
-            <span className="t-sm t-secondary">Live trips can be shared with anyone you trust, and SOS is one tap away during every ride.</span>
+            <span className="t-sm t-secondary">During a ride you can share your trip, call 112, or text your emergency contacts your live location in one tap.</span>
           </div>
         </div>
 
@@ -411,7 +426,6 @@ function Safety() {
           )}
         </section>
 
-        <ToggleRow title="Share trips automatically" subtitle="Send live trip links to your emergency contacts when a ride starts" checked={db.settings.shareTripAuto} onChange={(v) => updateSettings({ shareTripAuto: v })} />
       </div>
       <ModalSheet
         open={open}
@@ -488,33 +502,19 @@ function Help() {
    ========================================================================== */
 
 export function Settings() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
   const toast = useToast()
   const [del, setDel] = useState(false)
-  const [reset, setReset] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   return (
     <Page title="Settings" narrow>
       <div className="stack gap-6">
         <section className="section">
-          <h2 className="section__title">Campus</h2>
-          <Segmented
-            label="Campus"
-            value={u.campus}
-            onChange={(c) => updateMe({ campus: c })}
-            options={[
-              { value: 'chennai', label: 'VIT Chennai' },
-              { value: 'vellore', label: 'VIT Vellore' },
-            ]}
-          />
-          <span className="field__hint">Sets your default pickup and which rides we suggest first.</span>
-        </section>
-
-        <section className="section">
           <h2 className="section__title">Account</h2>
           <div className="list">
-            <ListRow icon={<UserRound />} title="Personal Information" onClick={() => nav('/profile/personal')} />
+            <ListRow icon={<UserRound />} title="Personal Information" subtitle={u.email} onClick={() => nav('/profile/personal')} />
             <ListRow icon={<Bell />} title="Notifications" onClick={() => nav('/profile/notifications')} />
             <ListRow icon={<ShieldCheck />} title="Safety" onClick={() => nav('/profile/safety')} />
           </div>
@@ -529,45 +529,37 @@ export function Settings() {
         </section>
 
         <section className="section">
-          <h2 className="section__title">Testing</h2>
-          <div className="list">
-            <ListRow icon={<WifiOff />} title="Simulate offline" subtitle="See how screens behave without a connection" trailing={<Switch label="Simulate offline" checked={db.settings.simulateOffline} onChange={(v) => updateSettings({ simulateOffline: v })} />} chevron={false} />
-            <ListRow icon={<RotateCcw />} title="Reset local data" subtitle="Restore the demo community and rides" onClick={() => setReset(true)} />
-          </div>
-        </section>
-
-        <section className="section">
           <h2 className="section__title">Danger zone</h2>
           <div className="list">
-            <ListRow icon={<LogOut />} title="Log out" onClick={() => { logout(); nav('/welcome', { replace: true }) }} />
+            <ListRow
+              icon={<LogOut />}
+              title="Log out"
+              onClick={async () => {
+                await auth.logout()
+                nav('/welcome', { replace: true })
+              }}
+            />
             <ListRow icon={<Trash />} title="Delete account" danger onClick={() => setDel(true)} />
           </div>
         </section>
       </div>
       <ConfirmDialog
-        open={reset}
-        title="Reset local data?"
-        body="All rides, bookings, messages and wallet activity stored on this device go back to the demo state."
-        confirmLabel="Reset data"
-        destructive
-        onConfirm={() => {
-          resetDB()
-          setReset(false)
-          toast({ tone: 'success', message: 'Local data reset' })
-          nav('/home')
-        }}
-        onClose={() => setReset(false)}
-      />
-      <ConfirmDialog
         open={del}
         title="Delete your account?"
-        body="This permanently removes your profile, ride history and wallet balance. Upcoming rides will be cancelled and riders refunded. This can’t be undone."
+        body="Your profile, phone number and car are removed permanently. Upcoming rides you offer are cancelled and riders are notified. This can’t be undone."
         confirmLabel="Delete account"
         cancelLabel="Keep my account"
         destructive
-        onConfirm={() => {
-          setDel(false)
-          toast({ tone: 'info', message: 'Account deletion is handled by support in this build' })
+        loading={deleting}
+        onConfirm={async () => {
+          setDeleting(true)
+          try {
+            await deleteAccount()
+            nav('/welcome', { replace: true })
+          } catch (e) {
+            toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Couldn’t delete account' })
+            setDeleting(false)
+          }
         }}
         onClose={() => setDel(false)}
       />

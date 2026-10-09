@@ -2,19 +2,17 @@ import { CarFront, Route as RouteIcon, Search } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { StateView } from '@/components/States'
-import { Badge, Button, Tabs } from '@/components/ui'
+import { Badge, Button, RideCardSkeleton, Tabs } from '@/components/ui'
 import { money, time } from '@/lib/format'
-import type { Booking, Ride } from '@/lib/types'
+import type { Booking, OfferedItem, Ride, TripItem } from '@/lib/types'
 import { Page } from '@/layouts/Page'
-import { me, myBookings, myOfferedRides, rideById, userById } from '@/services/api'
-import { useDB, type DB } from '@/services/db'
+import { NetworkError } from '@/components/States'
+import { Q, useMe, useQuery, type Trips } from '@/services/api'
 import { StatusBadge } from './trip'
 
 type Tab = 'upcoming' | 'active' | 'completed' | 'cancelled'
 
-type Item =
-  | { kind: 'booking'; booking: Booking; ride: Ride; at: Date }
-  | { kind: 'offer'; ride: Ride; at: Date }
+type Item = { kind: 'booking'; booking: TripItem; ride: Ride; at: Date } | { kind: 'offer'; ride: OfferedItem; at: Date }
 
 const BOOKING_TAB: Record<Booking['status'], Tab> = {
   pending: 'upcoming',
@@ -30,26 +28,25 @@ const BOOKING_TAB: Record<Booking['status'], Tab> = {
 
 const RIDE_TAB: Record<Ride['status'], Tab> = { scheduled: 'upcoming', in_progress: 'active', completed: 'completed', cancelled: 'cancelled' }
 
-function collect(db: DB, userId: string): Item[] {
-  const items: Item[] = []
-  for (const b of myBookings(userId, db)) {
-    const ride = rideById(b.rideId, db)
-    if (ride) items.push({ kind: 'booking', booking: b, ride, at: new Date(ride.departAt) })
-  }
-  for (const r of myOfferedRides(userId, db)) items.push({ kind: 'offer', ride: r, at: new Date(r.departAt) })
-  return items
+function collect(t: Trips): Item[] {
+  return [
+    ...t.bookings.map((b): Item => ({ kind: 'booking', booking: b, ride: b.ride, at: new Date(b.ride.departAt) })),
+    ...t.rides.map((r): Item => ({ kind: 'offer', ride: r, at: new Date(r.departAt) })),
+  ]
 }
 
 const tabOf = (i: Item): Tab => (i.kind === 'booking' ? BOOKING_TAB[i.booking.status] : RIDE_TAB[i.ride.status])
 
 export function MyRides() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
-  const all = collect(db, u.id)
+  const q = useQuery<Trips>(Q.trips)
+  const all = q.data ? collect(q.data) : []
   const counts = { upcoming: 0, active: 0, completed: 0, cancelled: 0 }
   all.forEach((i) => counts[tabOf(i)]++)
-  const [tab, setTab] = useState<Tab>(counts.active ? 'active' : 'upcoming')
+  const [picked, setTab] = useState<Tab | null>(null)
+  const tab: Tab = picked ?? (counts.active ? 'active' : 'upcoming')
   const list = all
     .filter((i) => tabOf(i) === tab)
     .sort((a, b) => (tab === 'upcoming' || tab === 'active' ? +a.at - +b.at : +b.at - +a.at))
@@ -85,7 +82,14 @@ export function MyRides() {
           ]}
         />
       </div>
-      {list.length === 0 ? (
+      {q.loading ? (
+        <div className="stack gap-3" style={{ paddingTop: 16 }}>
+          <RideCardSkeleton />
+          <RideCardSkeleton />
+        </div>
+      ) : q.error && !q.data ? (
+        <NetworkError onRetry={q.reload} />
+      ) : list.length === 0 ? (
         <EmptyTab tab={tab} canDrive={u.commute !== 'rider'} />
       ) : (
         <div className="timeline">
@@ -93,7 +97,7 @@ export function MyRides() {
             <div key={g.label}>
               <div className="timeline__group">{g.label}</div>
               {g.items.map((i) => (
-                <TimelineItem key={i.kind === 'booking' ? i.booking.id : i.ride.id} item={i} db={db} />
+                <TimelineItem key={i.kind === 'booking' ? i.booking.id : i.ride.id} item={i} />
               ))}
             </div>
           ))}
@@ -103,12 +107,12 @@ export function MyRides() {
   )
 }
 
-function TimelineItem({ item, db }: { item: Item; db: DB }) {
+function TimelineItem({ item }: { item: Item }) {
   const nav = useNavigate()
   const { ride, at } = item
   if (item.kind === 'booking') {
     const b = item.booking
-    const driver = userById(ride.driverId, db)!
+    const driver = b.driver
     const live = ['driver_arriving', 'driver_arrived', 'in_progress'].includes(b.status)
     return (
       <button type="button" className="timeline__item" onClick={() => nav(live ? `/live/${b.id}` : `/trip/${b.id}`)}>
@@ -129,9 +133,7 @@ function TimelineItem({ item, db }: { item: Item; db: DB }) {
       </button>
     )
   }
-  const reqs = db.bookings.filter((b) => b.rideId === ride.id)
-  const pending = reqs.filter((b) => b.status === 'pending').length
-  const earned = reqs.filter((b) => b.status === 'completed').reduce((s, b) => s + b.fare, 0)
+  const { pending, earned } = item.ride
   return (
     <button type="button" className="timeline__item" onClick={() => nav(`/drive/${ride.id}`)}>
       <DateCol at={at} />

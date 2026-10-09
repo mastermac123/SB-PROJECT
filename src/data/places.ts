@@ -1,66 +1,56 @@
-import type { CampusId, Place } from '@/lib/types'
+import type { Place } from '../lib/types'
 
-export const CAMPUSES: Record<CampusId, { id: CampusId; name: string; short: string; gate: Place; center: [number, number] }> = {
-  chennai: {
-    id: 'chennai',
-    name: 'VIT Chennai',
-    short: 'VIT Chennai',
-    gate: { id: 'vit-chennai', name: 'VIT Chennai', area: 'Main Gate, Vandalur–Kelambakkam Rd', lat: 12.8406, lng: 80.1534, kind: 'campus' },
-    center: [12.93, 80.19],
-  },
-  vellore: {
-    id: 'vellore',
-    name: 'VIT Vellore',
-    short: 'VIT Vellore',
-    gate: { id: 'vit-vellore', name: 'VIT Vellore', area: 'Main Gate, Katpadi', lat: 12.9692, lng: 79.1559, kind: 'campus' },
-    center: [12.96, 79.15],
-  },
+/** Vidyalankar Institute of Technology (vit.edu.in), Wadala East, Mumbai. */
+export const CAMPUS: Place = {
+  id: 'vit-campus',
+  name: 'VIT Wadala',
+  area: 'Vidyalankar Institute of Technology, Wadala (E)',
+  lat: 19.0222,
+  lng: 72.8711,
+  kind: 'campus',
 }
 
-/** Curated places students actually travel to. Search also falls back to OpenStreetMap. */
+export const CAMPUS_CENTER = { lat: 19.07, lng: 72.87 }
+
+/** Curated places students travel to. Search also falls back to OpenStreetMap. */
 export const PLACES: Place[] = [
-  CAMPUSES.chennai.gate,
-  CAMPUSES.vellore.gate,
-  { id: 'vit-chennai-mh', name: 'VIT Chennai Men’s Hostel', area: 'VIT Chennai campus', lat: 12.8432, lng: 80.1559, kind: 'campus' },
-  { id: 'vit-chennai-lh', name: 'VIT Chennai Ladies’ Hostel', area: 'VIT Chennai campus', lat: 12.8389, lng: 80.1561, kind: 'campus' },
-  { id: 'maa', name: 'Chennai Airport', area: 'Tirusulam, Chennai', lat: 12.9941, lng: 80.1709, kind: 'airport' },
-  { id: 'mas', name: 'Chennai Central', area: 'Park Town, Chennai', lat: 13.0827, lng: 80.2757, kind: 'station' },
-  { id: 'ms', name: 'Chennai Egmore', area: 'Egmore, Chennai', lat: 13.0732, lng: 80.2609, kind: 'station' },
-  { id: 'tbm', name: 'Tambaram', area: 'Tambaram Railway Station', lat: 12.9249, lng: 80.1, kind: 'station' },
-  { id: 'cmbt', name: 'Kilambakkam Bus Terminus', area: 'Vandalur, Chennai', lat: 12.8697, lng: 80.0827, kind: 'station' },
-  { id: 'tnagar', name: 'T. Nagar', area: 'Pondy Bazaar, Chennai', lat: 13.0418, lng: 80.2341, kind: 'area' },
-  { id: 'velachery', name: 'Velachery', area: 'Phoenix MarketCity, Chennai', lat: 12.9915, lng: 80.2167, kind: 'area' },
-  { id: 'guindy', name: 'Guindy', area: 'Guindy Metro, Chennai', lat: 13.0067, lng: 80.2206, kind: 'area' },
-  { id: 'adyar', name: 'Adyar', area: 'Adyar Signal, Chennai', lat: 13.0012, lng: 80.2565, kind: 'area' },
-  { id: 'besant', name: 'Besant Nagar', area: 'Elliot’s Beach, Chennai', lat: 12.9986, lng: 80.2669, kind: 'area' },
-  { id: 'annanagar', name: 'Anna Nagar', area: 'Anna Nagar Tower, Chennai', lat: 13.085, lng: 80.2101, kind: 'area' },
-  { id: 'omr', name: 'Sholinganallur', area: 'OMR, Chennai', lat: 12.901, lng: 80.2279, kind: 'area' },
-  { id: 'siruseri', name: 'SIPCOT Siruseri', area: 'OMR, Chennai', lat: 12.825, lng: 80.219, kind: 'area' },
-  { id: 'kelambakkam', name: 'Kelambakkam', area: 'Kelambakkam Bus Stand', lat: 12.7867, lng: 80.2209, kind: 'area' },
-  { id: 'chromepet', name: 'Chromepet', area: 'GST Road, Chennai', lat: 12.9516, lng: 80.1462, kind: 'area' },
-  { id: 'guduvanchery', name: 'Guduvanchery', area: 'GST Road', lat: 12.8447, lng: 80.0606, kind: 'area' },
-  { id: 'medavakkam', name: 'Medavakkam', area: 'Medavakkam Junction, Chennai', lat: 12.9171, lng: 80.1923, kind: 'area' },
-  { id: 'mylapore', name: 'Mylapore', area: 'Kapaleeshwarar Temple, Chennai', lat: 13.0339, lng: 80.2696, kind: 'area' },
-  { id: 'katpadi', name: 'Katpadi Junction', area: 'Katpadi, Vellore', lat: 12.9716, lng: 79.1386, kind: 'station' },
-  { id: 'vellore-bus', name: 'Vellore New Bus Stand', area: 'Vellore', lat: 12.9346, lng: 79.1373, kind: 'station' },
-  { id: 'cmc', name: 'CMC Vellore', area: 'Ida Scudder Rd, Vellore', lat: 12.9246, lng: 79.1353, kind: 'area' },
-  { id: 'blr-majestic', name: 'Bengaluru Majestic', area: 'Kempegowda Bus Station, Bengaluru', lat: 12.9767, lng: 77.5713, kind: 'station' },
-  { id: 'blr-airport', name: 'Bengaluru Airport', area: 'Devanahalli, Bengaluru', lat: 13.1989, lng: 77.7068, kind: 'airport' },
-  { id: 'blr-silkboard', name: 'Silk Board', area: 'BTM Layout, Bengaluru', lat: 12.9177, lng: 77.6238, kind: 'area' },
+  CAMPUS,
+  { id: 'wadala-rd', name: 'Wadala Road', area: 'Wadala Road Station', lat: 19.0164, lng: 72.8592, kind: 'station' },
+  { id: 'gtb-nagar', name: 'GTB Nagar', area: 'Guru Tegh Bahadur Nagar Station', lat: 19.0368, lng: 72.8645, kind: 'station' },
+  { id: 'sion', name: 'Sion', area: 'Sion Station', lat: 19.0473, lng: 72.8635, kind: 'station' },
+  { id: 'matunga', name: 'Matunga', area: 'Matunga Station', lat: 19.027, lng: 72.8553, kind: 'station' },
+  { id: 'dadar', name: 'Dadar', area: 'Dadar Station', lat: 19.0186, lng: 72.8429, kind: 'station' },
+  { id: 'csmt', name: 'CSMT', area: 'Chhatrapati Shivaji Maharaj Terminus', lat: 18.94, lng: 72.8353, kind: 'station' },
+  { id: 'mumbai-central', name: 'Mumbai Central', area: 'Mumbai Central Station', lat: 18.969, lng: 72.8205, kind: 'station' },
+  { id: 'ltt', name: 'LTT Kurla', area: 'Lokmanya Tilak Terminus', lat: 19.0688, lng: 72.8901, kind: 'station' },
+  { id: 'kurla', name: 'Kurla', area: 'Kurla Station', lat: 19.0658, lng: 72.8791, kind: 'station' },
+  { id: 'chembur', name: 'Chembur', area: 'Chembur Station', lat: 19.0622, lng: 72.9006, kind: 'station' },
+  { id: 'ghatkopar', name: 'Ghatkopar', area: 'Ghatkopar Station', lat: 19.086, lng: 72.9081, kind: 'station' },
+  { id: 'powai', name: 'Powai', area: 'Hiranandani Gardens, Powai', lat: 19.1176, lng: 72.906, kind: 'area' },
+  { id: 'bkc', name: 'BKC', area: 'Bandra Kurla Complex', lat: 19.0656, lng: 72.8682, kind: 'area' },
+  { id: 'bandra', name: 'Bandra', area: 'Bandra Station (W)', lat: 19.0544, lng: 72.8406, kind: 'station' },
+  { id: 'worli', name: 'Worli', area: 'Worli Naka', lat: 19.0176, lng: 72.815, kind: 'area' },
+  { id: 'lower-parel', name: 'Lower Parel', area: 'Lower Parel Station', lat: 18.9953, lng: 72.8302, kind: 'station' },
+  { id: 'andheri', name: 'Andheri', area: 'Andheri Station', lat: 19.1197, lng: 72.8464, kind: 'station' },
+  { id: 'airport-t2', name: 'Mumbai Airport T2', area: 'CSMIA Terminal 2, Sahar', lat: 19.0989, lng: 72.8742, kind: 'airport' },
+  { id: 'airport-t1', name: 'Mumbai Airport T1', area: 'CSMIA Terminal 1, Santacruz', lat: 19.0919, lng: 72.855, kind: 'airport' },
+  { id: 'goregaon', name: 'Goregaon', area: 'Goregaon Station', lat: 19.1647, lng: 72.8492, kind: 'station' },
+  { id: 'malad', name: 'Malad', area: 'Malad Station', lat: 19.1868, lng: 72.8484, kind: 'station' },
+  { id: 'kandivali', name: 'Kandivali', area: 'Kandivali Station', lat: 19.2045, lng: 72.8517, kind: 'station' },
+  { id: 'borivali', name: 'Borivali', area: 'Borivali Station', lat: 19.2295, lng: 72.8573, kind: 'station' },
+  { id: 'mulund', name: 'Mulund', area: 'Mulund Station', lat: 19.1726, lng: 72.9566, kind: 'station' },
+  { id: 'thane', name: 'Thane', area: 'Thane Station', lat: 19.186, lng: 72.9757, kind: 'station' },
+  { id: 'vashi', name: 'Vashi', area: 'Vashi Station, Navi Mumbai', lat: 19.0771, lng: 72.9988, kind: 'station' },
+  { id: 'belapur', name: 'CBD Belapur', area: 'Belapur Station, Navi Mumbai', lat: 19.0187, lng: 73.039, kind: 'station' },
 ]
 
 export const placeById = (id: string) => PLACES.find((p) => p.id === id)
 
-export function searchPlaces(q: string, campus?: CampusId): Place[] {
+export function searchPlaces(q: string): Place[] {
   const s = q.trim().toLowerCase()
-  const list = campus
-    ? [...PLACES].sort((a, b) => campusDistance(a, campus) - campusDistance(b, campus))
-    : PLACES
-  if (!s) return list.slice(0, 8)
-  return list.filter((p) => p.name.toLowerCase().includes(s) || p.area.toLowerCase().includes(s)).slice(0, 8)
+  const byDistance = [...PLACES].sort((a, b) => dist(a) - dist(b))
+  if (!s) return byDistance.slice(0, 8)
+  return byDistance.filter((p) => p.name.toLowerCase().includes(s) || p.area.toLowerCase().includes(s)).slice(0, 8)
 }
 
-function campusDistance(p: Place, campus: CampusId) {
-  const g = CAMPUSES[campus].gate
-  return Math.abs(p.lat - g.lat) + Math.abs(p.lng - g.lng)
-}
+const dist = (p: Place) => Math.abs(p.lat - CAMPUS.lat) + Math.abs(p.lng - CAMPUS.lng)

@@ -1,90 +1,95 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { MessageCircle, Phone, Share2, ShieldAlert, Siren, Star } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { MapView } from '@/components/MapView'
+import { MapView, type MapMarker } from '@/components/MapView'
 import { ModalSheet } from '@/components/Sheet'
 import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
 import { useToast } from '@/components/Toast'
-import { Avatar, Button, Chip, IconButton, ListRow, Plate, Rating, TestModeBadge, cx } from '@/components/ui'
+import { Avatar, Button, Chip, IconButton, ListRow, Plate, Rating, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop, useNow } from '@/hooks'
-import { firstName, money } from '@/lib/format'
+import { haversineKm, projectOnPolyline } from '@/lib/geo'
+import { firstName, money, relative } from '@/lib/format'
+import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { ApiError, bookingById, livePosition, me, rateTrip, rideById, setLivePhase, startTracking, userById } from '@/services/api'
-import { useDB } from '@/services/db'
+import { ApiError, Q, bookings, useDriverLocation, useMe, useQuery, type BookingDetail } from '@/services/api'
 import { shareLink } from './rideDetails'
-import { SuccessMark } from './trip'
+import { paymentLabel, SuccessMark } from './trip'
 
 // Configure per campus before launch; hidden when not set so we never show an unverified number.
 const CAMPUS_SECURITY = import.meta.env.VITE_CAMPUS_SECURITY_PHONE as string | undefined
-
 const RATING_TAGS = ['On time', 'Safe driving', 'Friendly', 'Clean car', 'Easy pickup', 'Good music']
+
+const etaMin = (from: LatLng, to: LatLng) => Math.max(1, Math.round(((haversineKm(from, to) * 1.35) / 22) * 60))
 
 export function LiveRide() {
   const { bookingId } = useParams()
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
   const nav = useNavigate()
   const toast = useToast()
   const desktop = useIsDesktop()
-  const padding = useMapPadding(0.44)
+  const padding = useMapPadding(0.46)
   const [sos, setSos] = useState(false)
-  const booking = bookingId ? bookingById(bookingId, db) : undefined
-  const live = booking && ['driver_arriving', 'driver_arrived', 'in_progress'].includes(booking.status)
-  useNow(1000, !!live)
+  const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
+  const loc = useDriverLocation(q.data?.ride.id, q.data?.ride.driverLocation)
+  useNow(15_000)
 
-  // Confirmed rides start tracking when opened.
-  useEffect(() => {
-    if (booking?.status === 'confirmed') void startTracking(booking.id)
-  }, [booking?.status, booking?.id])
+  if (q.loading)
+    return (
+      <div className="page">
+        <div className="page__content page__content--narrow" style={{ paddingTop: 40 }}>
+          <RideCardSkeleton />
+        </div>
+      </div>
+    )
+  const d = q.data
+  if (!d) return <Navigate to="/rides" replace />
+  if (d.role === 'driver') return <Navigate to={`/drive/${d.ride.id}`} replace />
+  const { booking, ride, driver, vehicle: v } = d
+  if (booking.status === 'completed') return <RateTrip detail={d} />
+  if (!['driver_arriving', 'driver_arrived', 'in_progress'].includes(booking.status)) return <Navigate to={`/trip/${booking.id}`} replace />
 
-  const pos = booking ? livePosition(booking, rideById(booking.rideId, db)!) : null
-
-  // Advance phases from the simulated driver timeline.
-  useEffect(() => {
-    if (!booking || !pos) return
-    if (booking.status === 'driver_arriving' && pos.progress >= 1) setLivePhase(booking.id, 'driver_arrived')
-    if (booking.status === 'in_progress' && pos.progress >= 1) setLivePhase(booking.id, 'completed')
-  })
-
-  if (!booking || booking.riderId !== u.id) return <Navigate to="/rides" replace />
-  if (['pending', 'accepted', 'rejected', 'cancelled'].includes(booking.status)) return <Navigate to={`/trip/${booking.id}`} replace />
-
-  const ride = rideById(booking.rideId, db)!
-  const driver = userById(ride.driverId, db)!
-  const v = driver.vehicle!
   const name = firstName(driver.name)
-  const p = pos!
+  const target = booking.status === 'in_progress' ? booking.drop : booking.pickup
+  const eta = loc ? etaMin(loc, target) : null
+  const stale = loc ? Date.now() - new Date(loc.at).getTime() > 2 * 60_000 : false
+
+  let progress = 0
+  if (loc && ride.route.length > 1) {
+    const at = projectOnPolyline(loc, ride.route).alongKm
+    const p = projectOnPolyline(booking.pickup, ride.route).alongKm
+    const dr = projectOnPolyline(booking.drop, ride.route).alongKm
+    progress = booking.status === 'in_progress' ? (at - p) / Math.max(dr - p, 0.1) : p > 0.2 ? at / p : 0.5
+    progress = Math.max(0.03, Math.min(1, progress))
+  }
 
   const headline =
     booking.status === 'driver_arriving'
-      ? { title: `Arriving in ${p.etaMin} min`, sub: `${name} is heading to ${booking.pickup.name}` }
+      ? { title: eta ? `Arriving in ${eta} min` : `${name} is on the way`, sub: loc ? `${name} is heading to ${booking.pickup.name}` : `Waiting for ${name}’s live location…` }
       : booking.status === 'driver_arrived'
         ? { title: `${name} has arrived`, sub: `Look for a ${v.color.toLowerCase()} ${v.model} · ${v.plate}` }
-        : booking.status === 'in_progress'
-          ? { title: `${p.etaMin} min to ${booking.drop.name}`, sub: 'Enjoy the ride. Your trip is being tracked.' }
-          : { title: 'You’ve arrived', sub: `${booking.drop.name}` }
+        : { title: eta ? `${eta} min to ${booking.drop.name}` : `On the way to ${booking.drop.name}`, sub: 'Enjoy the ride. Share your trip with someone you trust.' }
 
   const share = async () => {
-    const r = await shareLink('My RideSync trip', `I’m riding with ${driver.name} (${v.color} ${v.make} ${v.model}, ${v.plate}) from ${booking.pickup.name} to ${booking.drop.name}. Track on RideSync:`)
-    if (r === 'copied') toast({ tone: 'success', message: 'Trip link copied — send it to someone you trust' })
+    const text = `I’m riding with ${driver.name} (${v.color} ${v.make} ${v.model}, ${v.plate}) from ${booking.pickup.name} to ${booking.drop.name} via RideSync.${loc ? ` Last location: https://maps.google.com/?q=${loc.lat},${loc.lng}` : ''}`
+    const r = await shareLink('My RideSync trip', text, '')
+    if (r === 'copied') toast({ tone: 'success', message: 'Trip details copied — send them to someone you trust' })
   }
 
-  const markers = [
-    { id: 'pick', at: booking.pickup, kind: 'pickup' as const, label: booking.status === 'in_progress' || booking.status === 'completed' ? undefined : 'Pickup' },
-    { id: 'drop', at: booking.drop, kind: 'drop' as const, label: booking.drop.name },
-    ...(booking.status !== 'completed' ? [{ id: 'car', at: p.point, kind: 'car' as const, heading: p.heading }] : []),
+  const markers: MapMarker[] = [
+    { id: 'pick', at: booking.pickup, kind: 'pickup', label: booking.status === 'in_progress' ? undefined : 'Pickup' },
+    { id: 'drop', at: booking.drop, kind: 'drop', label: booking.drop.name },
+    ...(loc ? [{ id: 'car', at: loc, kind: 'car' as const, heading: loc.heading }] : []),
   ]
-  const routeCoords = p.route.coords
-  const fit = booking.status === 'driver_arriving' || booking.status === 'driver_arrived' ? [p.point, booking.pickup] : [booking.pickup, booking.drop]
-
-  if (booking.status === 'completed') return <RateTrip bookingId={booking.id} />
+  const fit = loc ? [loc, target] : [booking.pickup, booking.drop]
+  const contacts = user?.emergencyContacts ?? []
+  const smsBody = encodeURIComponent(`SOS from ${user?.name}: I’m in a RideSync carpool with ${driver.name}, ${v.color} ${v.model} ${v.plate}.${loc ? ` Location: https://maps.google.com/?q=${loc.lat},${loc.lng}` : ''}`)
 
   return (
     <MapScreen
-      snaps={[0.44, 0.88]}
-      map={<MapView routes={[{ id: 'r', coords: routeCoords, kind: 'primary' }]} markers={markers} fit={fit} padding={padding} follow="car" />}
+      snaps={[0.46, 0.88]}
+      map={<MapView routes={[{ id: 'r', coords: ride.route, kind: 'primary' }]} markers={markers} fit={fit} padding={padding} follow="car" />}
       top={
         <>
           <BackButton surface to={`/trip/${booking.id}`} />
@@ -103,17 +108,12 @@ export function LiveRide() {
               {headline.title}
             </h1>
             <p className="t-body t-muted">{headline.sub}</p>
+            {stale && loc && <p className="t-sm" style={{ color: 'var(--warning-600)' }}>Location last updated {relative(loc.at).toLowerCase()}</p>}
           </motion.div>
         </AnimatePresence>
-        <div className="progress" aria-hidden>
-          <div className="progress__bar" style={{ width: `${booking.status === 'driver_arrived' ? 100 : Math.round(p.progress * 100)}%`, background: booking.status === 'in_progress' ? 'var(--success-500)' : undefined }} />
+        <div className={cx('progress', !loc && 'progress--indeterminate')} aria-hidden>
+          <div className="progress__bar" style={loc ? { width: `${booking.status === 'driver_arrived' ? 100 : Math.round(progress * 100)}%`, background: booking.status === 'in_progress' ? 'var(--success-500)' : undefined } : undefined} />
         </div>
-
-        {booking.status === 'driver_arrived' && (
-          <Button size="lg" block onClick={() => setLivePhase(booking.id, 'in_progress')}>
-            I’m in the car
-          </Button>
-        )}
 
         <div className="row gap-3">
           <Avatar name={driver.name} src={driver.photo} size="lg" verified />
@@ -128,10 +128,17 @@ export function LiveRide() {
         </div>
 
         <div className="actions-row">
-          <a className="action-tile" href={`tel:+91${driver.phone}`}>
-            <Phone />
-            Call
-          </a>
+          {d.driverPhone ? (
+            <a className="action-tile" href={`tel:+91${d.driverPhone}`}>
+              <Phone />
+              Call
+            </a>
+          ) : (
+            <span className="action-tile" style={{ opacity: 0.5 }}>
+              <Phone />
+              Call
+            </span>
+          )}
           <button className="action-tile" onClick={() => nav(`/chat/${booking.id}`)}>
             <MessageCircle />
             Chat
@@ -149,15 +156,21 @@ export function LiveRide() {
         <hr className="divider" />
         <Stops from={{ title: booking.pickup.name, subtitle: booking.pickup.area }} to={{ title: booking.drop.name, subtitle: booking.drop.area }} />
         <div className="row row--between t-sm t-muted">
-          <span>Paid {money(booking.fare)}</span>
-          <TestModeBadge>Simulated live tracking</TestModeBadge>
+          <span>
+            {money(booking.fare)} · {paymentLabel(booking)}
+          </span>
+          {booking.paymentMethod === 'cash' && booking.paymentStatus !== 'received' && d.driverUpiId && (
+            <button className="t-strong t-primary" onClick={() => nav(`/pay/${booking.id}`)}>
+              Pay by UPI
+            </button>
+          )}
         </div>
       </div>
 
       <ModalSheet open={sos} onClose={() => setSos(false)} title={<span className="row gap-2" style={{ color: 'var(--error-600)' }}><ShieldAlert size={20} /> Emergency</span>}>
         <div className="stack gap-2">
           <p className="t-body t-secondary" style={{ marginBottom: 8 }}>
-            Your live location and trip details are shared with whoever you contact here.
+            If you feel unsafe, call emergency services first.
           </p>
           <a href="tel:112" className="btn btn--danger btn--lg btn--block">
             <span className="btn__label">
@@ -166,19 +179,19 @@ export function LiveRide() {
           </a>
           <div className="list" style={{ marginTop: 8 }}>
             {CAMPUS_SECURITY && <ListRow icon={<ShieldAlert />} title="Call campus security" subtitle={CAMPUS_SECURITY} onClick={() => (window.location.href = `tel:${CAMPUS_SECURITY}`)} />}
-            <ListRow
-              icon={<Share2 />}
-              title="Alert emergency contacts"
-              subtitle={u.emergencyContacts?.length ? u.emergencyContacts.map((c) => c.name.split(' (')[0]).join(', ') : 'Add contacts in Safety settings'}
-              onClick={() => {
-                if (!u.emergencyContacts?.length) {
-                  nav('/profile/safety')
-                  return
-                }
-                setSos(false)
-                toast({ tone: 'success', message: 'Your contacts have been sent your live trip (test mode)' })
-              }}
-            />
+            {contacts.length > 0 ? (
+              <a className="list-row" href={`sms:${contacts.map((c) => `+91${c.phone}`).join(',')}?body=${smsBody}`}>
+                <span className="list-row__icon">
+                  <Share2 />
+                </span>
+                <span className="list-row__body">
+                  <span className="list-row__title">Text my emergency contacts</span>
+                  <span className="list-row__sub">{contacts.map((c) => c.name).join(', ')} · includes your live location</span>
+                </span>
+              </a>
+            ) : (
+              <ListRow icon={<Share2 />} title="Add emergency contacts" subtitle="So you can alert them in one tap" onClick={() => nav('/profile/safety')} />
+            )}
           </div>
         </div>
       </ModalSheet>
@@ -186,13 +199,10 @@ export function LiveRide() {
   )
 }
 
-function RateTrip({ bookingId }: { bookingId: string }) {
-  const db = useDB()
+function RateTrip({ detail }: { detail: BookingDetail }) {
   const nav = useNavigate()
   const toast = useToast()
-  const booking = bookingById(bookingId, db)!
-  const ride = rideById(booking.rideId, db)!
-  const driver = userById(ride.driverId, db)!
+  const { booking, driver } = detail
   const [stars, setStars] = useState(booking.riderRating ?? 0)
   const [tags, setTags] = useState<string[]>([])
   const [comment, setComment] = useState('')
@@ -202,7 +212,7 @@ function RateTrip({ bookingId }: { bookingId: string }) {
   async function submit() {
     setSaving(true)
     try {
-      await rateTrip(booking.id, stars, tags, comment)
+      await bookings.rate(booking.id, stars, tags, comment)
       toast({ tone: 'success', message: 'Thanks for rating your trip' })
       nav('/home', { replace: true })
     } catch (e) {
@@ -219,24 +229,15 @@ function RateTrip({ bookingId }: { bookingId: string }) {
           <SuccessMark />
           <h1 className="t-h1">You’ve arrived</h1>
           <p className="t-body t-muted">
-            {booking.drop.name} · {money(booking.fare)} paid · ~2.4 kg CO₂ saved
+            {booking.drop.name} · {money(booking.fare)} · ~{(2.4 * booking.seats).toFixed(1)} kg CO₂ saved
           </p>
         </div>
         <div className="stack gap-5" style={{ alignItems: 'center', marginTop: 8 }}>
           <Avatar name={driver.name} src={driver.photo} size="xl" verified />
-          <h2 className="t-h3">How was your ride with {firstName(driver.name)}?</h2>
+          <h2 className="t-h3">{rated ? `You rated ${firstName(driver.name)}` : `How was your ride with ${firstName(driver.name)}?`}</h2>
           <div className="row gap-2" role="radiogroup" aria-label="Rating">
             {[1, 2, 3, 4, 5].map((n) => (
-              <motion.button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={stars === n}
-                aria-label={`${n} star${n > 1 ? 's' : ''}`}
-                whileTap={{ scale: 0.85 }}
-                className={cx('star-btn', n <= stars && 'is-on')}
-                onClick={() => !rated && setStars(n)}
-              >
+              <motion.button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} star${n > 1 ? 's' : ''}`} whileTap={{ scale: 0.85 }} className={cx('star-btn', n <= stars && 'is-on')} onClick={() => !rated && setStars(n)}>
                 <Star />
               </motion.button>
             ))}

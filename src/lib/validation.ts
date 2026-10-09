@@ -1,23 +1,24 @@
-/** VIT student email: name.surnameYYYY@vitstudent.ac.in (Vellore, Chennai, AP, Bhopal). */
-export const VIT_EMAIL_DOMAIN = 'vitstudent.ac.in'
+/** Only students with a college email can join. The server enforces this; the UI mirrors it. */
+export const DEFAULT_EMAIL_DOMAIN = 'vit.edu.in'
 
-export function validateVitEmail(raw: string): string | null {
+export function isCollegeEmail(raw: string, domain = DEFAULT_EMAIL_DOMAIN) {
   const email = raw.trim().toLowerCase()
-  if (!email) return 'Enter your VIT email'
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+$/.test(email) && email.endsWith(`@${domain.toLowerCase()}`)
+}
+
+export function validateCollegeEmail(raw: string, domain = DEFAULT_EMAIL_DOMAIN): string | null {
+  const email = raw.trim().toLowerCase()
+  if (!email) return 'Enter your college email'
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Enter a valid email address'
-  if (!email.endsWith(`@${VIT_EMAIL_DOMAIN}`)) return `Use your VIT student email ending in @${VIT_EMAIL_DOMAIN}`
-  if (!/^[a-z0-9._-]+@/.test(email)) return 'Email can only contain letters, numbers, dots and hyphens'
+  if (!isCollegeEmail(email, domain)) return `Only @${domain} college emails can join RideSync`
   return null
 }
 
-/** VIT register number, e.g. 22BCE1234 — 2-digit year, 3-letter programme, 4 digits. */
+/** College roll / student ID. Formats differ by batch, so accept 4–15 letters, digits, / or -. */
 export function validateStudentId(raw: string): string | null {
   const id = raw.trim().toUpperCase()
-  if (!id) return 'Enter your register number'
-  if (!/^\d{2}[A-Z]{3}\d{4}$/.test(id)) return 'Register numbers look like 22BCE1234'
-  const year = Number(id.slice(0, 2))
-  const now = new Date().getFullYear() % 100
-  if (year > now || year < now - 6) return 'This register number isn’t from a current batch'
+  if (!id) return 'Enter your student ID'
+  if (!/^[A-Z0-9/-]{4,15}$/.test(id)) return 'Use the ID printed on your college ID card (letters and numbers only)'
   return null
 }
 
@@ -74,7 +75,7 @@ export function luhn(num: string): boolean {
 export function validatePlate(raw: string): string | null {
   const p = raw.replace(/\s+/g, '').toUpperCase()
   if (!p) return 'Enter your registration number'
-  if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$/.test(p) && !/^\d{2}BH\d{4}[A-Z]{1,2}$/.test(p)) return 'Use the format TN 14 AB 1234'
+  if (!/^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$/.test(p) && !/^\d{2}BH\d{4}[A-Z]{1,2}$/.test(p)) return 'Use the format MH 01 AB 1234'
   return null
 }
 

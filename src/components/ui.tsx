@@ -261,6 +261,16 @@ export function VerifiedBadge({ short }: { short?: boolean }) {
 }
 
 export function Rating({ value, count, countLabel = 'rides' }: { value: number; count?: number; countLabel?: string }) {
+  if (!value)
+    return (
+      <span className="row gap-1">
+        <span className="rating" style={{ fontWeight: 500, color: 'var(--ink-500)' }}>
+          <Star style={{ fill: 'var(--ink-300)' }} />
+          New
+        </span>
+        {!!count && <span className="t-muted dot-sep">{`${count} ${countLabel}`}</span>}
+      </span>
+    )
   return (
     <span className="row gap-1">
       <span className="rating" aria-label={`Rated ${value.toFixed(1)} out of 5`}>

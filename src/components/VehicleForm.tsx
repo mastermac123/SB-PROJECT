@@ -60,7 +60,7 @@ export function VehicleForm({
         <Field label="Colour" placeholder="White" value={v.color} onChange={(e) => setV({ ...v, color: e.target.value })} error={errors.color} />
         <Field
           label="Registration number"
-          placeholder="TN 14 AB 1234"
+          placeholder="MH 01 AB 1234"
           autoCapitalize="characters"
           value={v.plate}
           onChange={(e) => setV({ ...v, plate: e.target.value.toUpperCase() })}

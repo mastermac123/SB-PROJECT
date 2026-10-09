@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CarFront, ChevronDown, Clock, MessageSquareText, SearchX, Share2, Users } from 'lucide-react'
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MatchBreakdown, MatchScore } from '@/components/MatchScore'
 import { MapView } from '@/components/MapView'
 import { StateView } from '@/components/States'
@@ -12,12 +12,13 @@ import { Avatar, Badge, Button, IconButton, Notice, Plate, Rating, Seats, Verifi
 import { useIsDesktop } from '@/hooks'
 import { dayLabel, duration, firstName, hhmm, isoDate, money, plural, time } from '@/lib/format'
 import { desiredTime, fmtKm, PREFERENCE_LABEL, TIER_LABEL } from '@/lib/matching'
-import type { SearchQuery } from '@/lib/types'
+import type { MatchResult, SearchQuery } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { ACTIVE_BOOKING, ApiError, me, requestRide, rideById, scoreOne, userById } from '@/services/api'
-import { useDB } from '@/services/db'
-import { routeNow } from '@/services/routing'
-import { useSearch } from '@/state/search'
+import { ApiError, Q, bookings, matchRide, useMe, useQuery, type RideDetail } from '@/services/api'
+import { useSearch, withInstant } from '@/state/search'
+import { RideCardSkeleton } from '@/components/ui'
+
+const ACTIVE_BOOKING = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
 
 export async function shareLink(title: string, text: string, url = window.location.href) {
   if (navigator.share) {
@@ -34,8 +35,8 @@ export async function shareLink(title: string, text: string, url = window.locati
 
 export function RideDetails() {
   const { rideId } = useParams()
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
   const toast = useToast()
   const search = useSearch()
@@ -47,22 +48,50 @@ export function RideDetails() {
   const [requesting, setRequesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const ride = rideId ? rideById(rideId, db) : undefined
-  if (!ride) {
+  const loc = useLocation()
+  const fromFeed = (loc.state as { own?: boolean } | null)?.own
+  const detail = useQuery<RideDetail>(rideId ? Q.ride(rideId) : null)
+  const [match, setMatch] = useState<MatchResult | null | undefined>(undefined)
+  const ride = detail.data?.ride
+  const depart = ride ? new Date(ride.departAt) : new Date()
+  const query: SearchQuery = withInstant(
+    !fromFeed && search.query && ride && Math.abs(new Date(search.query.at ?? 0).getTime() - depart.getTime()) < 5 * 3600_000
+      ? search.query
+      : { pickup: ride?.origin ?? (search.query?.pickup as never), drop: ride?.destination ?? (search.query?.drop as never), date: isoDate(depart), time: hhmm(depart), seats: search.query?.seats ?? 1, preferences: search.query?.preferences ?? [] },
+  )
+  const qKey = ride ? `${ride.id}|${ride.seatsBooked}|${ride.status}|${JSON.stringify(query)}` : ''
+  useEffect(() => {
+    if (!ride || ride.driverId === u.id) return
+    let alive = true
+    matchRide(ride.id, query)
+      .then((m) => alive && setMatch(m))
+      .catch(() => alive && setMatch(null))
+    return () => {
+      alive = false
+    }
+  }, [qKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (detail.loading) {
+    return (
+      <div className="page">
+        <div className="page__content page__content--narrow stack gap-3" style={{ paddingTop: 24 }}>
+          <RideCardSkeleton />
+          <RideCardSkeleton />
+        </div>
+      </div>
+    )
+  }
+  if (!ride || !detail.data) {
     return (
       <div className="page" style={{ justifyContent: 'center' }}>
         <StateView icon={<SearchX />} tone="neutral" title="Ride not found" body="This ride may have been removed by the driver." actions={<Button block onClick={() => nav('/find')}>Find another ride</Button>} />
       </div>
     )
   }
-  const driver = userById(ride.driverId, db)!
-  const vehicle = driver.vehicle!
-  const depart = new Date(ride.departAt)
-  const query: SearchQuery = search.query ?? { pickup: ride.origin, drop: ride.destination, date: isoDate(depart), time: hhmm(depart), seats: 1, preferences: [] }
-  const match = scoreOne(ride, query)
-  const route = routeNow(ride.origin, ride.destination)
+  const { driver, vehicle } = detail.data
+  const route = { coords: ride.route, durationMin: ride.durationMin }
   const seatsLeft = ride.seatsTotal - ride.seatsBooked
-  const existing = db.bookings.find((b) => b.rideId === ride.id && b.riderId === u.id && ACTIVE_BOOKING.includes(b.status))
+  const existing = detail.data.myBooking && ACTIVE_BOOKING.includes(detail.data.myBooking.status) ? detail.data.myBooking : undefined
   const isMine = ride.driverId === u.id
   const unavailable = ride.status !== 'scheduled' || depart.getTime() < Date.now()
   const full = seatsLeft < query.seats
@@ -76,7 +105,7 @@ export function RideDetails() {
     setRequesting(true)
     setError(null)
     try {
-      const b = await requestRide(match, query, note)
+      const b = await bookings.request(ride!.id, query, note)
       nav(`/trip/${b.id}`, { replace: false })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Couldn’t send your request.')
@@ -94,8 +123,8 @@ export function RideDetails() {
       View your request
     </Button>
   ) : (
-    <Button size="lg" block loading={requesting} disabled={unavailable || full || !match} onClick={request}>
-      {unavailable ? 'No longer available' : full ? 'Not enough seats' : `Request Ride · ${money(total)}`}
+    <Button size="lg" block loading={requesting || match === undefined} disabled={unavailable || full || !match} onClick={request}>
+      {unavailable ? 'No longer available' : full ? 'Ride is full' : match === null ? 'Doesn’t pass your route' : `Request Ride · ${money(total)}`}
     </Button>
   )
 

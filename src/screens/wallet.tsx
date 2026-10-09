@@ -1,46 +1,57 @@
-import { ArrowDownLeft, ArrowUpRight, Plus, ReceiptText, X } from 'lucide-react'
-import { useState } from 'react'
-import { ModalSheet } from '@/components/Sheet'
-import { StateView } from '@/components/States'
-import { useToast } from '@/components/Toast'
-import { Button, Chip, Field, TestModeBadge } from '@/components/ui'
+import { ArrowDownLeft, ArrowUpRight, AtSign, ReceiptText } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { NetworkError, StateView } from '@/components/States'
+import { Badge, Button, RideCardSkeleton } from '@/components/ui'
 import { money, relative } from '@/lib/format'
-import { validateUpiId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
-import { addMoney, ApiError, me, walletBalance } from '@/services/api'
-import { useDB } from '@/services/db'
-import { SANDBOX_FAILURE_UPI } from '@/services/payments'
+import { Q, useMe, useQuery, type PaymentRecord } from '@/services/api'
+
+const STATUS: Record<PaymentRecord['status'], { label: string; tone?: 'success' | 'warning' }> = {
+  unpaid: { label: 'Cash due', tone: 'warning' },
+  marked_paid: { label: 'Paid · unconfirmed' },
+  received: { label: 'Received', tone: 'success' },
+}
 
 export function Wallet() {
-  const db = useDB()
-  const u = me(db)!
-  const [open, setOpen] = useState(false)
-  const balance = walletBalance(u.id, db)
-  const txns = db.wallet.filter((t) => t.userId === u.id).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+  const { user } = useMe()
+  const nav = useNavigate()
+  const q = useQuery<PaymentRecord[]>(Q.payments)
+  const list = q.data ?? []
   const month = new Date().getMonth()
-  const spent = txns.filter((t) => t.type === 'debit' && new Date(t.createdAt).getMonth() === month).reduce((s, t) => s + t.amount, 0)
-  const earned = txns.filter((t) => t.type === 'credit' && t.title === 'Cost share received' && new Date(t.createdAt).getMonth() === month).reduce((s, t) => s + t.amount, 0)
+  const thisMonth = list.filter((p) => new Date(p.at).getMonth() === month)
+  const spent = thisMonth.filter((p) => p.direction === 'paid' && p.status !== 'unpaid').reduce((s, p) => s + p.amount, 0)
+  const received = thisMonth.filter((p) => p.direction === 'received' && p.status === 'received').reduce((s, p) => s + p.amount, 0)
+  const toCollect = list.filter((p) => p.direction === 'received' && p.status !== 'received').reduce((s, p) => s + p.amount, 0)
 
   return (
     <Page title="Wallet" back={false}>
       <div className="stack gap-6">
-        <div className="wallet-card">
-          <div className="row row--between">
+        {user?.commute === 'rider' ? (
+          <div className="wallet-card">
             <span className="t-sm" style={{ opacity: 0.8 }}>
-              RideSync Wallet
+              Spent on rides this month
             </span>
-            <TestModeBadge />
+            <span className="wallet-card__balance tabular">{money(spent)}</span>
+            <span className="t-sm" style={{ opacity: 0.8 }}>
+              Paid directly to drivers by UPI or cash
+            </span>
           </div>
-          <span className="wallet-card__balance tabular">{money(balance)}</span>
-          <span className="t-sm" style={{ opacity: 0.8 }}>
-            Available balance
-          </span>
-          <div className="row gap-2" style={{ marginTop: 16 }}>
-            <Button variant="secondary" icon={<Plus />} onClick={() => setOpen(true)}>
-              Add money
-            </Button>
+        ) : (
+          <div className="wallet-card">
+            <span className="t-sm" style={{ opacity: 0.8 }}>
+              Cost-share received this month
+            </span>
+            <span className="wallet-card__balance tabular">{money(received)}</span>
+            <span className="t-sm" style={{ opacity: 0.8 }}>
+              {toCollect > 0 ? `${money(toCollect)} still to confirm or collect` : 'Paid directly to you by UPI or cash'}
+            </span>
+            <div className="row gap-2" style={{ marginTop: 16 }}>
+              <Button variant="secondary" icon={<AtSign />} onClick={() => nav('/profile/payments')}>
+                {user?.upiId ? user.upiId : 'Add UPI ID'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="split split--2" style={{ gap: 12, gridTemplateColumns: '1fr 1fr' }}>
           <div className="mini-stat">
@@ -48,103 +59,48 @@ export function Wallet() {
             <span className="t-h2 tabular">{money(spent)}</span>
           </div>
           <div className="mini-stat">
-            <span className="t-sm t-muted">Cost-share received</span>
-            <span className="t-h2 tabular t-success">{money(earned)}</span>
+            <span className="t-sm t-muted">To collect</span>
+            <span className="t-h2 tabular">{money(toCollect)}</span>
           </div>
         </div>
 
         <section className="section">
           <h2 className="section__title">Activity</h2>
-          {txns.length === 0 ? (
-            <StateView compact icon={<ReceiptText />} tone="neutral" title="No transactions yet" body="Payments, refunds and cost-share you receive will appear here." />
+          {q.loading ? (
+            <RideCardSkeleton />
+          ) : q.error && !q.data ? (
+            <NetworkError onRetry={q.reload} />
+          ) : list.length === 0 ? (
+            <StateView compact icon={<ReceiptText />} tone="neutral" title="No payments yet" body="Cost-share you pay or receive for rides will appear here." />
           ) : (
             <div className="list">
-              {txns.map((t) => (
-                <div key={t.id} className="list-row">
-                  <span className="list-row__icon" style={t.type === 'credit' ? { background: 'var(--success-50)', color: 'var(--success-600)' } : undefined}>
-                    {t.type === 'credit' ? <ArrowDownLeft /> : <ArrowUpRight />}
+              {list.map((p) => (
+                <button key={p.bookingId} className="list-row" onClick={() => nav(`/trip/${p.bookingId}`)}>
+                  <span className="list-row__icon" style={p.direction === 'received' ? { background: 'var(--success-50)', color: 'var(--success-600)' } : undefined}>
+                    {p.direction === 'received' ? <ArrowDownLeft /> : <ArrowUpRight />}
                   </span>
                   <span className="list-row__body">
-                    <span className="list-row__title">{t.title}</span>
+                    <span className="list-row__title">{p.direction === 'received' ? `From ${p.counterparty}` : `To ${p.counterparty}`}</span>
                     <span className="list-row__sub truncate">
-                      {t.subtitle ? `${t.subtitle} · ` : ''}
-                      {relative(t.createdAt)}
+                      {p.route} · {p.method === 'upi' ? 'UPI' : 'Cash'} · {relative(p.at)}
                     </span>
                   </span>
-                  <span className="tabular t-strong" style={{ color: t.type === 'credit' ? 'var(--success-600)' : 'var(--ink-900)' }}>
-                    {t.type === 'credit' ? '+' : '−'}
-                    {money(t.amount)}
+                  <span className="stack" style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <span className="tabular t-strong" style={{ color: p.direction === 'received' ? 'var(--success-600)' : 'var(--ink-900)' }}>
+                      {p.direction === 'received' ? '+' : '−'}
+                      {money(p.amount)}
+                    </span>
+                    <Badge tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Badge>
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </section>
+        <p className="t-caption t-muted" style={{ fontWeight: 400 }}>
+          RideSync doesn’t hold money. Riders pay drivers directly by UPI or cash, and both sides see the record here.
+        </p>
       </div>
-      <AddMoney open={open} onClose={() => setOpen(false)} />
     </Page>
-  )
-}
-
-function AddMoney({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const toast = useToast()
-  const [amount, setAmount] = useState(500)
-  const [upi, setUpi] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function submit() {
-    const e = validateUpiId(upi) ?? (amount < 50 || amount > 5000 ? 'Add between ₹50 and ₹5,000' : null)
-    setError(e)
-    if (e) return
-    setLoading(true)
-    try {
-      await addMoney(amount, { method: 'upi', upiId: upi })
-      toast({ tone: 'success', message: `${money(amount)} added to your wallet` })
-      onClose()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Couldn’t add money')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <ModalSheet
-      open={open}
-      onClose={onClose}
-      title="Add money"
-      footer={
-        <Button size="lg" block loading={loading} onClick={submit}>
-          Add {money(amount)}
-        </Button>
-      }
-    >
-      <div className="stack gap-4">
-        <div className="field">
-          <label className="field__label" htmlFor="amt">
-            Amount
-          </label>
-          <div className="input-wrap">
-            <span className="input-wrap__leading t-h3">₹</span>
-            <input id="amt" className="input t-h2" inputMode="numeric" value={amount || ''} onChange={(e) => setAmount(Number(e.target.value.replace(/\D/g, '').slice(0, 5)))} style={{ fontSize: 24, fontWeight: 700 }} />
-          </div>
-        </div>
-        <div className="row gap-2">
-          {[200, 500, 1000].map((a) => (
-            <Chip key={a} selected={amount === a} onClick={() => setAmount(a)}>
-              {money(a)}
-            </Chip>
-          ))}
-        </div>
-        <Field label="Pay from UPI ID" placeholder="yourname@okbank" value={upi} onChange={(e) => setUpi(e.target.value)} hint={`Test mode — no money moves. ${SANDBOX_FAILURE_UPI} simulates a decline.`} />
-        {error && (
-          <span className="field__error" role="alert">
-            <X />
-            {error}
-          </span>
-        )}
-      </div>
-    </ModalSheet>
   )
 }

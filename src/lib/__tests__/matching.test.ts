@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { placeById } from '@/data/places'
-import { SEED_USERS } from '@/data/seed'
+import { placeById } from '../../data/places'
 import { scoreRide, sortMatches, suggestFarePerSeat, tierFor } from '../matching'
 import { syntheticRoute, polylineLengthKm } from '../geo'
 import type { Ride, SearchQuery } from '../types'
-import { validateStudentId, validateVitEmail, luhn } from '../validation'
+import { validateStudentId, validateCollegeEmail, luhn } from '../validation'
 
-const rahul = SEED_USERS.find((u) => u.id === 'u_rahul')!
-const origin = placeById('vit-chennai')!
-const destination = placeById('tnagar')!
+const rahul = { id: 'u1', name: 'Rahul Sharma', rating: 4.8, ratingCount: 30, ridesOffered: 32, ridesTaken: 2, completionRate: 0.97, gender: 'male' as const }
+const vehicle = { id: 'v', make: 'Honda', model: 'City', color: 'White', plate: 'MH 01 AB 1234', seats: 3, fuel: 'petrol' as const }
+const origin = placeById('vit-campus')!
+const destination = placeById('malad')!
 const coords = syntheticRoute(origin, destination)
 const route = { coords, distanceKm: polylineLengthKm(coords) * 1.1, durationMin: 60 }
 
@@ -17,9 +17,10 @@ const ride: Ride = {
   departAt: new Date('2030-01-10T17:30:00').toISOString(),
   seatsTotal: 3, seatsBooked: 0, farePerSeat: 120, maxDetourKm: 3,
   preferences: ['no_smoking'], vehicleId: 'v', status: 'scheduled', createdAt: '',
+  distanceKm: route.distanceKm, durationMin: 60, route: coords,
 }
 const q = (over: Partial<SearchQuery> = {}): SearchQuery => ({ pickup: origin, drop: destination, date: '2030-01-10', time: '17:30', seats: 1, preferences: [], ...over })
-const score = (query: SearchQuery, r: Ride = ride) => scoreRide({ query, ride: r, route, driver: rahul, vehicle: rahul.vehicle! })
+const score = (query: SearchQuery, r: Ride = ride) => scoreRide({ query, ride: r, route, driver: rahul, vehicle })
 
 describe('scoreRide', () => {
   it('scores an exact route and time as an excellent match', () => {
@@ -27,6 +28,7 @@ describe('scoreRide', () => {
     expect(m.score).toBeGreaterThanOrEqual(85)
     expect(m.tier).toBe('excellent')
     expect(m.fare).toBe(120)
+    expect('gender' in m.driver).toBe(false)
   })
 
   it('filters rides going the opposite way', () => {
@@ -76,10 +78,11 @@ describe('helpers', () => {
     expect(suggestFarePerSeat(2, 3)).toBe(40)
   })
   it('validates VIT identity', () => {
-    expect(validateVitEmail('a.b2022@vitstudent.ac.in')).toBeNull()
-    expect(validateVitEmail('a@gmail.com')).toMatch(/vitstudent/)
-    expect(validateStudentId('22BCE1187')).toBeNull()
-    expect(validateStudentId('22BC1187')).not.toBeNull()
+    expect(validateCollegeEmail('aarav.menon@vit.edu.in')).toBeNull()
+    expect(validateCollegeEmail('aarav@gmail.com')).toMatch(/vit\.edu\.in/)
+    expect(validateCollegeEmail('x@evilvit.edu.in')).not.toBeNull()
+    expect(validateStudentId('22101A0012')).toBeNull()
+    expect(validateStudentId('a b')).not.toBeNull()
     expect(luhn('4111 1111 1111 1111')).toBe(true)
   })
 })

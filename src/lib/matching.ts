@@ -20,7 +20,7 @@
  * matches riders request and how those rides are rated (see docs/AI-MATCHING.md).
  */
 import { haversineKm, polylineLengthKm, projectOnPolyline, ROAD_CIRCUITY } from './geo'
-import type { Booking, LatLng, MatchFactors, MatchResult, Ride, RidePreference, SearchQuery, User, Vehicle } from './types'
+import type { Booking, Gender, LatLng, MatchFactors, MatchResult, PublicUser, Ride, RidePreference, SearchQuery, Vehicle } from './types'
 
 export const WEIGHTS: MatchFactors = {
   route: 0.3,
@@ -44,7 +44,8 @@ export type MatchInput = {
   query: SearchQuery
   ride: Ride
   route: { coords: LatLng[]; distanceKm: number; durationMin: number }
-  driver: User
+  /** Gender is used only for the Female-friendly preference and never returned. */
+  driver: PublicUser & { gender?: Gender }
   vehicle: Vehicle
   /** Past bookings by this rider, used for the "ridden together" signal. */
   history?: Booking[]
@@ -69,6 +70,7 @@ export const TIER_LABEL: Record<MatchResult['tier'], string> = {
 }
 
 export function desiredTime(q: SearchQuery): Date {
+  if (q.at) return new Date(q.at)
   const [h, m] = q.time.split(':').map(Number)
   const d = new Date(`${q.date}T00:00:00`)
   d.setHours(h, m, 0, 0)
@@ -125,6 +127,7 @@ export function scoreRide({ query, ride, route, driver, vehicle, history = [], r
   }
   const preference = query.preferences.length ? 1 - unmet.length / query.preferences.length : 1
 
+  // New drivers start from a neutral 4.5★ prior until they have ratings.
   const smoothedRating = (driver.rating * driver.ratingCount + 4.5 * 5) / (driver.ratingCount + 5)
   let reliability = 0.6 * clamp((smoothedRating - 3) / 2) + 0.4 * clamp(driver.completionRate)
 
@@ -172,9 +175,10 @@ export function scoreRide({ query, ride, route, driver, vehicle, history = [], r
 
   const historyText = together > 0 ? `You’ve ridden with ${first} ${together === 1 ? 'once' : `${together} times`}` : undefined
 
+  const { gender: _gender, ...publicDriver } = driver
   return {
     ride,
-    driver,
+    driver: publicDriver,
     vehicle,
     score,
     factors,

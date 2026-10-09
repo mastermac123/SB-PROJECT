@@ -273,3 +273,22 @@ button.choice:active { transform: scale(0.99); }
 .frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-6); }
 .frame { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .frame__screen { background: var(--surface); border-radius: 24px; box-shadow: inset 0 0 0 1px var(--border), var(--shadow-sm); min-height: 360px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+
+/* ---- Boot / loading -------------------------------------------------- */
+.boot { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-6); background: var(--surface); }
+.boot img { animation: boot-pulse 1.4s ease-in-out infinite; }
+@keyframes boot-pulse { 50% { opacity: 0.45; } }
+.page-loading { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--gutter); }
+
+/* ---- Sign-in ---------------------------------------------------------- */
+.google-slot { display: flex; justify-content: center; min-height: 44px; }
+.dev-login { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px dashed var(--border-strong); }
+.dev-login__input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); font: var(--text-body-sm); }
+
+/* ---- Home feed -------------------------------------------------------- */
+.feed-empty { display: flex; flex-direction: column; gap: 4px; padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-sunken); }
+
+/* ---- UPI -------------------------------------------------------------- */
+.upi-qr { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--border); }
+.upi-qr img { border-radius: 8px; }
+.upi-id { padding: 8px 8px 8px 14px; border-radius: var(--radius-sm); background: var(--surface-sunken); }

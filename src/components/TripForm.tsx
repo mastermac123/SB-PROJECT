@@ -1,7 +1,7 @@
 import { ArrowDownUp, Calendar, Clock, Users } from 'lucide-react'
 import { useState } from 'react'
 import { isoDate } from '@/lib/format'
-import type { CampusId, Place } from '@/lib/types'
+import type { Place } from '@/lib/types'
 import { PlacePicker } from './PlacePicker'
 import { IconButton, cx } from './ui'
 
@@ -14,16 +14,12 @@ export type TripDraft = { pickup: Place | null; drop: Place | null; date: string
 export function TripForm({
   value,
   onChange,
-  campus,
-  userId,
   seatsLabel = 'Seats',
   maxSeats = 4,
   errors = {},
 }: {
   value: TripDraft
   onChange: (v: TripDraft) => void
-  campus?: CampusId
-  userId?: string
   seatsLabel?: string
   maxSeats?: number
   errors?: { pickup?: string | null; drop?: string | null; time?: string | null }
@@ -103,8 +99,6 @@ export function TripForm({
       <PlacePicker
         open={picking !== null}
         title={picking === 'pickup' ? 'Pickup location' : 'Destination'}
-        campus={campus}
-        userId={userId}
         onClose={() => setPicking(null)}
         onPick={(p) => {
           onChange({ ...value, [picking!]: p })

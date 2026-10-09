@@ -1,50 +1,43 @@
-import { Bell, CarFront, ChevronRight, RotateCcw, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArrowRight, Bell, CarFront, ChevronRight, Search } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { MapView, type MapRoute } from '@/components/MapView'
-import { MatchScore } from '@/components/MatchScore'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
-import { Avatar, Badge, Button, Segmented } from '@/components/ui'
-import { CAMPUSES, placeById } from '@/data/places'
-import { dayTime, firstName, hhmm, isoDate, time } from '@/lib/format'
-import { scoreRide } from '@/lib/matching'
-import type { Booking, Ride, SearchQuery } from '@/lib/types'
+import { Avatar, Badge, Button, Rating, Segmented, Skeleton } from '@/components/ui'
+import { CAMPUS } from '@/data/places'
+import { dayTime, firstName, money, time } from '@/lib/format'
+import type { OfferedItem, SearchQuery, TripItem } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { currentTrip, me, myBookings, pendingRequestCount, rideById, unreadCount, userById } from '@/services/api'
-import { useDB, type DB } from '@/services/db'
-import { routeNow } from '@/services/routing'
+import { LIVE_STATUSES, Q, useMe, useQuery, type Badges, type FeedItem, type Trips } from '@/services/api'
 import { defaultQuery, useSearch } from '@/state/search'
 import { BOOKING_STATUS } from './trip'
 
+const ACTIVE = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
+
 export function Home() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
   const search = useSearch()
-  const campus = CAMPUSES[u.campus]
+  const trips = useQuery<Trips>(Q.trips)
+  const feed = useQuery<FeedItem[]>(Q.feed)
+  const unread = useQuery<Badges>(Q.badges).data?.unread ?? 0
   const canDrive = u.commute !== 'rider'
   const [mode, setMode] = useState<'find' | 'offer'>(u.commute === 'driver' ? 'offer' : 'find')
-  const base = search.query ?? defaultQuery(campus.gate)
+  const base = search.query ?? defaultQuery(CAMPUS)
   const [draft, setDraft] = useState<TripDraft>({ pickup: base.pickup, drop: search.query ? base.drop : null, date: base.date, time: base.time, seats: base.seats })
   const [errors, setErrors] = useState<ReturnType<typeof validateTrip>>({})
   const padding = useMapPadding(0.6)
 
-  const { booking, offered } = currentTrip(u.id, db)
-  const requests = pendingRequestCount(u.id, db)
-  const unread = unreadCount(u.id, db)
-  const recommendation = useMemo(() => recommend(db, u.id), [db, u.id])
-  const recent = myBookings(u.id, db)
-    .filter((b) => b.status === 'completed')
-    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))[0]
+  const booking = trips.data?.bookings
+    .filter((b) => ACTIVE.includes(b.status))
+    .sort((a, b) => +new Date(a.ride.departAt) - +new Date(b.ride.departAt))[0]
+  const offered = trips.data?.rides.filter((r) => r.status === 'scheduled' || r.status === 'in_progress').sort((a, b) => +new Date(a.departAt) - +new Date(b.departAt))[0]
+  const soon = feed.data ?? []
 
-  // Map: campus + routes of rides leaving soon.
-  const soon = db.rides
-    .filter((r) => r.status === 'scheduled' && r.driverId !== u.id && +new Date(r.departAt) > Date.now() && Math.abs(r.origin.lat - campus.gate.lat) + Math.abs(r.origin.lng - campus.gate.lng) < 0.3)
-    .sort((a, b) => +new Date(a.departAt) - +new Date(b.departAt))
-    .slice(0, 4)
-  const routes: MapRoute[] = soon.map((r) => ({ id: r.id, coords: routeNow(r.origin, r.destination).coords, kind: 'alt' }))
-  const fit = [campus.gate, ...soon.map((r) => r.destination)]
+  const routes: MapRoute[] = soon.slice(0, 5).map((f) => ({ id: f.ride.id, coords: f.ride.route, kind: 'alt' }))
+  const fit = [CAMPUS, ...soon.slice(0, 5).flatMap((f) => [f.ride.origin, f.ride.destination])]
 
   function submit() {
     const errs = validateTrip(draft)
@@ -59,17 +52,15 @@ export function Home() {
     nav('/find/results')
   }
 
-  const greeting = (() => {
-    const h = new Date().getHours()
-    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
-  })()
+  const h = new Date().getHours()
+  const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
     <MapScreen
       snaps={[0.6, 0.92]}
-      map={<MapView routes={routes} markers={[{ id: 'campus', at: campus.gate, kind: 'pickup', label: campus.name, darkLabel: true }]} fit={fit} padding={padding} animateRoutes={false} />}
+      map={<MapView routes={routes} markers={[{ id: 'campus', at: CAMPUS, kind: 'pickup', label: CAMPUS.name, darkLabel: true }]} fit={fit} padding={padding} animateRoutes={false} center={CAMPUS} />}
       top={
-        <div className="row row--between grow only-mobile">
+        <div className="row row--between grow">
           <span className="map-chip">
             <Logo height={22} />
           </span>
@@ -100,90 +91,86 @@ export function Home() {
             ]}
           />
         )}
-        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} campus={u.campus} userId={u.id} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? u.vehicle?.seats ?? 4 : 4} />
+        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? u.vehicle?.seats ?? 4 : 4} />
         <Button size="lg" block onClick={submit} icon={mode === 'offer' ? <CarFront /> : <Search />}>
           {mode === 'offer' ? 'Continue to Offer' : 'Find a Ride'}
         </Button>
 
-        {/* Context — only what's useful right now */}
-        {(booking || offered || requests > 0) && (
+        {(booking || offered) && (
           <section className="stack gap-2" style={{ marginTop: 8 }}>
             <h2 className="section__title">Upcoming</h2>
-            {booking && <UpcomingBooking db={db} booking={booking} />}
-            {offered && <UpcomingOffer db={db} ride={offered} />}
+            {booking && <UpcomingBooking booking={booking} />}
+            {offered && <UpcomingOffer ride={offered} />}
           </section>
         )}
 
-        {recommendation && !booking && (
-          <section className="stack gap-2" style={{ marginTop: 8 }}>
-            <h2 className="section__title">Suggested for you</h2>
-            <button
-              type="button"
-              className="context-row"
-              onClick={() => {
-                void search.run(recommendation.query)
-                nav('/find/results')
-              }}
-            >
-              <Avatar name={recommendation.driverName} size="sm" />
-              <span className="stack grow" style={{ minWidth: 0 }}>
-                <span className="t-body t-strong truncate">
-                  {recommendation.ride.origin.name} → {recommendation.ride.destination.name}
-                </span>
-                <span className="t-sm t-muted truncate">
-                  {firstName(recommendation.driverName)} · {dayTime(recommendation.ride.departAt)} · matches your saved home
-                </span>
-              </span>
-              <MatchScore score={recommendation.score} tier={recommendation.tier} label="" />
-            </button>
-          </section>
-        )}
-
-        {recent && (
-          <section className="stack gap-2" style={{ marginTop: 8 }}>
-            <h2 className="section__title">Recent</h2>
-            <button
-              type="button"
-              className="context-row"
-              onClick={() => {
-                setDraft((d) => ({ ...d, pickup: recent.pickup, drop: recent.drop }))
-                setMode('find')
-                window.scrollTo({ top: 0 })
-              }}
-            >
-              <span className="list-row__icon">
-                <RotateCcw />
-              </span>
-              <span className="stack grow" style={{ minWidth: 0 }}>
-                <span className="t-body t-strong truncate">
-                  {recent.pickup.name} → {recent.drop.name}
-                </span>
-                <span className="t-sm t-muted">Ride again · last on {new Date(rideById(recent.rideId, db)!.departAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-              </span>
-              <ChevronRight size={18} className="t-muted" />
-            </button>
-          </section>
-        )}
+        <section className="stack gap-2" style={{ marginTop: 8 }}>
+          <div className="row row--between">
+            <h2 className="section__title">Leaving soon</h2>
+            {soon.length > 0 && <span className="t-caption t-muted">{soon.length} offered by VIT students</span>}
+          </div>
+          {feed.loading ? (
+            <>
+              <Skeleton h={64} style={{ borderRadius: 14 }} />
+              <Skeleton h={64} style={{ borderRadius: 14 }} />
+            </>
+          ) : soon.length === 0 ? (
+            <div className="feed-empty">
+              <span className="t-body t-strong">No rides offered yet</span>
+              <span className="t-sm t-muted">When a VIT student offers a ride, it appears here instantly.{canDrive ? ' Driving somewhere? Offer your empty seats.' : ''}</span>
+              {canDrive && (
+                <Button size="sm" variant="tonal" icon={<CarFront />} onClick={() => nav('/offer')} style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+                  Offer a Ride
+                </Button>
+              )}
+            </div>
+          ) : (
+            soon.map((f) => <FeedRow key={f.ride.id} item={f} />)
+          )}
+        </section>
       </div>
     </MapScreen>
   )
 }
 
-function UpcomingBooking({ db, booking }: { db: DB; booking: Booking }) {
+function FeedRow({ item }: { item: FeedItem }) {
   const nav = useNavigate()
-  const ride = rideById(booking.rideId, db)!
-  const driver = userById(ride.driverId, db)!
+  const { ride, driver, vehicle } = item
+  const left = ride.seatsTotal - ride.seatsBooked
+  return (
+    <button type="button" className="context-row context-row--emph" onClick={() => nav(`/ride/${ride.id}`, { state: { own: true } })}>
+      <Avatar name={driver.name} src={driver.photo} size="sm" verified />
+      <span className="stack grow" style={{ minWidth: 0 }}>
+        <span className="t-body t-strong row gap-1 truncate" style={{ display: 'flex' }}>
+          <span className="truncate">{ride.origin.name}</span>
+          <ArrowRight size={14} className="t-muted" style={{ flex: 'none' }} />
+          <span className="truncate">{ride.destination.name}</span>
+        </span>
+        <span className="t-sm t-muted truncate row gap-1" style={{ display: 'flex' }}>
+          {dayTime(ride.departAt)} · {firstName(driver.name)} · <Rating value={driver.rating} /> · {vehicle.model}
+        </span>
+      </span>
+      <span className="stack" style={{ alignItems: 'flex-end', gap: 4, flex: 'none' }}>
+        <span className="t-body t-strong tabular">{money(ride.farePerSeat)}</span>
+        {left > 0 ? <span className="t-caption t-primary t-strong">Book · {left} left</span> : <span className="t-caption t-muted">Full</span>}
+      </span>
+    </button>
+  )
+}
+
+function UpcomingBooking({ booking }: { booking: TripItem }) {
+  const nav = useNavigate()
   const s = BOOKING_STATUS[booking.status]
-  const live = ['driver_arriving', 'driver_arrived', 'in_progress'].includes(booking.status)
+  const live = (LIVE_STATUSES as readonly string[]).includes(booking.status)
   return (
     <button type="button" className="context-row context-row--emph" onClick={() => nav(live ? `/live/${booking.id}` : `/trip/${booking.id}`)}>
-      <Avatar name={driver.name} src={driver.photo} size="sm" verified />
+      <Avatar name={booking.driver.name} src={booking.driver.photo} size="sm" verified />
       <span className="stack grow" style={{ minWidth: 0 }}>
         <span className="t-body t-strong truncate">
           {booking.pickup.name} → {booking.drop.name}
         </span>
         <span className="t-sm t-muted truncate">
-          {firstName(driver.name)} · {dayTime(ride.departAt)}
+          {firstName(booking.driver.name)} · {dayTime(booking.ride.departAt)}
         </span>
       </span>
       <Badge tone={s.tone}>{s.short}</Badge>
@@ -191,9 +178,8 @@ function UpcomingBooking({ db, booking }: { db: DB; booking: Booking }) {
   )
 }
 
-function UpcomingOffer({ db, ride }: { db: DB; ride: Ride }) {
+function UpcomingOffer({ ride }: { ride: OfferedItem }) {
   const nav = useNavigate()
-  const pending = db.bookings.filter((b) => b.rideId === ride.id && b.status === 'pending').length
   return (
     <button type="button" className="context-row context-row--emph" onClick={() => nav(`/drive/${ride.id}`)}>
       <span className="list-row__icon" style={{ background: 'var(--primary-50)', color: 'var(--primary-600)' }}>
@@ -207,30 +193,7 @@ function UpcomingOffer({ db, ride }: { db: DB; ride: Ride }) {
           You’re driving · {time(ride.departAt)} · {ride.seatsBooked}/{ride.seatsTotal} seats filled
         </span>
       </span>
-      {pending > 0 ? <Badge tone="error">{pending} new</Badge> : ride.status === 'in_progress' ? <Badge tone="success">Live</Badge> : <ChevronRight size={18} className="t-muted" />}
+      {ride.pending > 0 ? <Badge tone="error">{ride.pending} new</Badge> : ride.status === 'in_progress' ? <Badge tone="success">Live</Badge> : <ChevronRight size={18} className="t-muted" />}
     </button>
   )
-}
-
-/** Best upcoming ride for the user's habitual route (campus ↔ saved home). */
-function recommend(db: DB, userId: string) {
-  const u = db.users.find((x) => x.id === userId)!
-  const homeId = db.savedPlaces[userId]?.home
-  const home = homeId ? placeById(homeId) : undefined
-  if (!home) return null
-  const campus = CAMPUSES[u.campus].gate
-  const evening = new Date().getHours() >= 11
-  const best = db.rides
-    .filter((r) => r.status === 'scheduled' && r.driverId !== userId && +new Date(r.departAt) > Date.now() && +new Date(r.departAt) - Date.now() < 30 * 3600_000)
-    .map((ride) => {
-      const driver = db.users.find((x) => x.id === ride.driverId)
-      if (!driver?.vehicle) return null
-      const d = new Date(ride.departAt)
-      const query: SearchQuery = { pickup: evening ? campus : home, drop: evening ? home : campus, date: isoDate(d), time: hhmm(d), seats: 1, preferences: [] }
-      const m = scoreRide({ query, ride, route: routeNow(ride.origin, ride.destination), driver, vehicle: driver.vehicle, history: db.bookings.filter((b) => b.riderId === userId), rides: db.rides })
-      return m && m.score >= 75 ? { ...m, query, driverName: driver.name } : null
-    })
-    .filter(Boolean)
-    .sort((a, b) => b!.score - a!.score)[0]
-  return best ?? null
 }

@@ -1,24 +1,21 @@
 import { motion } from 'framer-motion'
-import { Check, CircleX, Clock, MessageCircle, Navigation, ReceiptText, RefreshCw, Star, X } from 'lucide-react'
+import { Banknote, Check, CircleX, Clock, MessageCircle, Phone, RefreshCw, SearchX, Star, X } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/Sheet'
-import { StateView } from '@/components/States'
+import { NetworkError, StateView } from '@/components/States'
 import { Stops } from '@/components/Stops'
 import { TopBar } from '@/components/TopBar'
 import { useToast } from '@/components/Toast'
-import { Avatar, Badge, Button, Chip, Notice, Plate, Rating, TestModeBadge, VerifiedBadge } from '@/components/ui'
+import { Avatar, Badge, Button, Chip, Notice, Plate, Rating, RideCardSkeleton, VerifiedBadge } from '@/components/ui'
 import { dayTime, firstName, money, plural, time } from '@/lib/format'
 import type { Booking, BookingStatus } from '@/lib/types'
-import { ApiError, bookingById, cancelBooking, me, rideById, startTracking, userById } from '@/services/api'
-import { METHOD_LABEL } from '@/services/payments'
-import { useDB, type DB } from '@/services/db'
+import { ApiError, Q, bookings, useQuery, type BookingDetail } from '@/services/api'
 import { useSearch } from '@/state/search'
-import { SearchX } from 'lucide-react'
 
 export const BOOKING_STATUS: Record<BookingStatus, { label: string; short: string; tone: 'verified' | 'success' | 'warning' | 'error' | 'info' | undefined }> = {
   pending: { label: 'Waiting for driver', short: 'Requested', tone: 'warning' },
-  accepted: { label: 'Accepted · payment due', short: 'Pay now', tone: 'verified' },
+  accepted: { label: 'Accepted · confirm payment', short: 'Pay now', tone: 'verified' },
   rejected: { label: 'Declined by driver', short: 'Declined', tone: 'error' },
   confirmed: { label: 'Confirmed', short: 'Confirmed', tone: 'success' },
   driver_arriving: { label: 'Driver on the way', short: 'Arriving', tone: 'info' },
@@ -30,12 +27,15 @@ export const BOOKING_STATUS: Record<BookingStatus, { label: string; short: strin
 
 const CANCEL_REASONS = ['My plans changed', 'Found another ride', 'Driver asked me to cancel', 'Pickup is too far', 'Other']
 
-/** Trip summary used by booking, payment and history screens. */
-export function TripSummary({ db, booking, showPayment = true }: { db: DB; booking: Booking; showPayment?: boolean }) {
-  const ride = rideById(booking.rideId, db)!
-  const driver = userById(ride.driverId, db)!
-  const v = driver.vehicle!
-  const payment = booking.paymentId ? db.payments.find((p) => p.id === booking.paymentId) : undefined
+export function paymentLabel(b: Booking) {
+  if (!b.paymentMethod) return 'Not paid yet'
+  if (b.paymentMethod === 'cash') return b.paymentStatus === 'received' ? 'Paid in cash' : 'Cash at pickup'
+  return b.paymentStatus === 'received' ? 'Paid by UPI · received' : `Paid by UPI${b.paymentRef ? ` · ref ${b.paymentRef}` : ''}`
+}
+
+/** Trip summary used by booking, payment and live screens. */
+export function TripSummary({ detail }: { detail: BookingDetail }) {
+  const { booking, ride, driver, vehicle: v } = detail
   return (
     <div className="summary">
       <div className="row gap-3">
@@ -67,7 +67,7 @@ export function TripSummary({ db, booking, showPayment = true }: { db: DB; booki
       <hr className="divider" />
       <div className="bill">
         <div className="bill__row">
-          <span>Ride fare</span>
+          <span>Cost share</span>
           <span>{money(booking.fare)}</span>
         </div>
         <div className="bill__row">
@@ -78,54 +78,57 @@ export function TripSummary({ db, booking, showPayment = true }: { db: DB; booki
           <span>Total</span>
           <span>{money(booking.fare)}</span>
         </div>
-        {showPayment && payment && (
-          <div className="row row--between t-sm t-muted" style={{ marginTop: 4 }}>
-            <span>
-              {payment.status === 'refunded' ? 'Refunded to wallet' : `Paid via ${METHOD_LABEL[payment.method]}`} · {payment.reference}
-            </span>
-            {payment.testMode && <TestModeBadge />}
-          </div>
-        )}
+        <div className="row row--between t-sm t-muted" style={{ marginTop: 4 }}>
+          <span>{paymentLabel(booking)}</span>
+          {booking.paymentStatus === 'received' && (
+            <Badge tone="success" icon={<Check />}>
+              Received
+            </Badge>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-/* ==========================================================================
-   Booking status: requested → accepted → paid → (live) → completed
-   ========================================================================== */
-
 export function TripStatus() {
   const { bookingId } = useParams()
-  const db = useDB()
-  const u = me(db)!
   const nav = useNavigate()
   const toast = useToast()
   const search = useSearch()
+  const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState(CANCEL_REASONS[0])
   const [cancelling, setCancelling] = useState(false)
-  const booking = bookingId ? bookingById(bookingId, db) : undefined
 
-  if (!booking || booking.riderId !== u.id) {
+  if (q.loading)
+    return (
+      <div className="page">
+        <div className="page__content page__content--narrow stack gap-3" style={{ paddingTop: 40 }}>
+          <RideCardSkeleton />
+        </div>
+      </div>
+    )
+  if (q.error?.code === 'network' && !q.data) return <div className="page" style={{ justifyContent: 'center' }}><NetworkError onRetry={q.reload} /></div>
+  if (!q.data) {
     return (
       <div className="page" style={{ justifyContent: 'center' }}>
-        <StateView icon={<SearchX />} tone="neutral" title="Booking not found" actions={<Button block onClick={() => nav('/rides')}>Go to My Rides</Button>} />
+        <StateView icon={<SearchX />} tone="neutral" title="Booking not found" body={q.error?.message} actions={<Button block onClick={() => nav('/rides')}>Go to My Rides</Button>} />
       </div>
     )
   }
+  const detail = q.data
+  if (detail.role === 'driver') return <Navigate to={`/drive/${detail.ride.id}`} replace />
+  const { booking, driver } = detail
   if (['driver_arriving', 'driver_arrived', 'in_progress'].includes(booking.status)) return <Navigate to={`/live/${booking.id}`} replace />
-
-  const ride = rideById(booking.rideId, db)!
-  const driver = userById(ride.driverId, db)!
   const name = firstName(driver.name)
 
   async function doCancel() {
     setCancelling(true)
     try {
-      const r = await cancelBooking(booking!.id, reason)
+      await bookings.cancel(booking.id, booking.status === 'pending' ? 'Request withdrawn' : reason)
       setCancelOpen(false)
-      toast({ tone: 'success', message: r.refunded ? `Cancelled · ${money(r.refunded)} refunded to wallet` : 'Request cancelled' })
+      toast({ tone: 'success', message: booking.status === 'pending' ? 'Request withdrawn' : 'Seat cancelled' })
     } catch (e) {
       toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Couldn’t cancel' })
     } finally {
@@ -152,25 +155,25 @@ export function TripStatus() {
               </div>
             }
             title="Ride requested"
-            body={`Waiting for ${name} to accept. Most drivers respond within a few minutes — we’ll notify you.`}
+            body={`Waiting for ${name} to accept. You’ll get a notification the moment they respond.`}
           />
         )
       case 'accepted':
-        return <Hero mark={<SuccessMark />} title="Ride confirmed" body={`${name} accepted your request. Pay now to lock in your seat.`} />
+        return <Hero mark={<SuccessMark />} title="Ride confirmed" body={`${name} accepted your request. Choose how you’ll pay to lock in your seat.`} />
       case 'confirmed':
-        return <Hero mark={<SuccessMark />} title="You’re all set" body={`${name} will pick you up at ${booking.pickup.name}, ${dayTime(ride.departAt).toLowerCase()}.`} />
+        return <Hero mark={<SuccessMark />} title="You’re all set" body={`${name} will pick you up at ${booking.pickup.name}, ${dayTime(detail.ride.departAt).toLowerCase()}. You can track them live once they start.`} />
       case 'rejected':
-        return <Hero mark={<div className="result-mark result-mark--error"><X /></div>} title={`${name} couldn’t take this ride`} body="This happens when plans change or seats fill up. You haven’t been charged." />
+        return <Hero mark={<div className="result-mark result-mark--error"><X /></div>} title={`${name} couldn’t take this ride`} body="This happens when plans change or seats fill up. You haven’t paid anything." />
       case 'cancelled':
         return (
           <Hero
             mark={<div className="result-mark result-mark--error"><CircleX /></div>}
             title="Ride cancelled"
-            body={booking.cancelledBy === 'driver' ? `${name} cancelled: ${booking.cancelReason ?? 'plans changed'}. Any payment has been refunded to your wallet.` : `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.`}
+            body={booking.cancelledBy === 'rider' ? `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.` : `${booking.cancelReason ?? 'The ride was cancelled'}.${booking.paymentStatus !== 'unpaid' ? ` Ask ${name} to refund your UPI payment.` : ''}`}
           />
         )
       case 'completed':
-        return <Hero mark={<div className="result-mark result-mark--brand"><Check /></div>} title="Trip completed" body={`Thanks for riding with ${name}. You saved about 2.4 kg of CO₂.`} />
+        return <Hero mark={<div className="result-mark result-mark--brand"><Check /></div>} title="Trip completed" body={`Thanks for riding with ${name}. You saved about ${(2.4 * booking.seats).toFixed(1)} kg of CO₂.`} />
       default:
         return null
     }
@@ -181,7 +184,7 @@ export function TripStatus() {
       case 'pending':
         return (
           <Button size="lg" variant="secondary" block onClick={() => setCancelOpen(true)}>
-            Cancel request
+            Withdraw request
           </Button>
         )
       case 'accepted':
@@ -193,25 +196,26 @@ export function TripStatus() {
       case 'confirmed':
         return (
           <div className="stack gap-2">
-            <Button
-              size="lg"
-              block
-              icon={<Navigation />}
-              onClick={() => {
-                void startTracking(booking.id)
-                nav(`/live/${booking.id}`)
-              }}
-            >
-              Track ride
-            </Button>
             <div className="row gap-2">
               <Button variant="secondary" block icon={<MessageCircle />} onClick={() => nav(`/chat/${booking.id}`)}>
                 Message {name}
               </Button>
-              <Button variant="danger-ghost" block onClick={() => setCancelOpen(true)}>
-                Cancel ride
-              </Button>
+              {detail.driverPhone && (
+                <a className="btn btn--secondary" href={`tel:+91${detail.driverPhone}`} aria-label={`Call ${name}`}>
+                  <span className="btn__label">
+                    <Phone />
+                  </span>
+                </a>
+              )}
             </div>
+            {booking.paymentMethod === 'cash' && detail.driverUpiId && (
+              <Button variant="ghost" block icon={<Banknote />} onClick={() => nav(`/pay/${booking.id}`)}>
+                Pay by UPI instead
+              </Button>
+            )}
+            <Button variant="danger-ghost" block onClick={() => setCancelOpen(true)}>
+              Cancel seat
+            </Button>
           </div>
         )
       case 'rejected':
@@ -251,30 +255,25 @@ export function TripStatus() {
         {booking.status === 'accepted' && (
           <div style={{ marginBottom: 16 }}>
             <Notice tone="info" icon={<Clock />}>
-              Your seat is held for 15 minutes. Free cancellation until 1 hour before departure.
+              Pay {name} directly — by UPI now or in cash at pickup. RideSync doesn’t hold your money.
             </Notice>
           </div>
         )}
         <div className="page__sheet-lite">
-          <TripSummary db={db} booking={booking} />
+          <TripSummary detail={detail} />
         </div>
-        {booking.status === 'completed' && (
-          <button type="button" className="row gap-2 t-sm t-strong t-primary" style={{ marginTop: 16 }} onClick={() => toast({ tone: 'info', message: 'Receipt emailed to ' + u.email + ' (test mode)' })}>
-            <ReceiptText size={16} /> Email receipt
-          </button>
-        )}
       </div>
       {footer && <div className="page__footer page__footer--narrow">{footer}</div>}
 
       <ConfirmDialog
         open={cancelOpen}
-        title={booking.status === 'pending' ? 'Cancel this request?' : 'Cancel this ride?'}
+        title={booking.status === 'pending' ? 'Withdraw this request?' : 'Cancel your seat?'}
         body={
-          booking.status === 'confirmed'
-            ? `You’ll get ${money(booking.fare)} back in your RideSync Wallet. ${name} will be notified.`
-            : `${name} will no longer see your request.`
+          booking.status === 'pending'
+            ? `${name} will no longer see your request.`
+            : `${name} will be notified.${booking.paymentStatus !== 'unpaid' ? ' Since you’ve paid by UPI, ask them to refund you.' : ''} Frequent cancellations lower your reliability score.`
         }
-        confirmLabel={booking.status === 'pending' ? 'Cancel request' : 'Cancel ride'}
+        confirmLabel={booking.status === 'pending' ? 'Withdraw request' : 'Cancel seat'}
         cancelLabel="Keep it"
         destructive
         loading={cancelling}

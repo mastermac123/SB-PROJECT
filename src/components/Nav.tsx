@@ -1,7 +1,6 @@
 import { Bell, CarFront, House, MessageCircle, Route, Search, UserRound, Wallet } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { me, pendingRequestCount, unreadCount } from '@/services/api'
-import { useDB } from '@/services/db'
+import { Q, useMe, useQuery, type Badges } from '@/services/api'
 import { Logo } from './Logo'
 import { Avatar, Button } from './ui'
 
@@ -14,9 +13,7 @@ const ITEMS = [
 ]
 
 export function BottomNav() {
-  const db = useDB()
-  const u = me(db)
-  const requests = u ? pendingRequestCount(u.id, db) : 0
+  const requests = useQuery<Badges>(Q.badges).data?.requests ?? 0
   return (
     <nav className="bottom-nav only-mobile" aria-label="Primary">
       {ITEMS.map(({ to, label, icon: Icon }) => (
@@ -31,12 +28,12 @@ export function BottomNav() {
 }
 
 export function Sidebar() {
-  const db = useDB()
   const nav = useNavigate()
-  const u = me(db)
+  const { user: u } = useMe()
+  const badges = useQuery<Badges>(Q.badges).data
   if (!u) return null
-  const unread = unreadCount(u.id, db)
-  const requests = pendingRequestCount(u.id, db)
+  const unread = badges?.unread ?? 0
+  const requests = badges?.requests ?? 0
   const canDrive = u.commute !== 'rider'
   return (
     <aside className="sidebar only-desktop" aria-label="Primary">
@@ -63,11 +60,11 @@ export function Sidebar() {
         </Button>
       )}
       <NavLink to="/profile" className="sidebar__footer">
-        <Avatar name={u.name} src={u.photo} size="sm" verified={u.verified} />
+        <Avatar name={u.name} src={u.photo} size="sm" verified />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="t-sm t-strong truncate">{u.name}</span>
           <span className="t-caption t-muted truncate" style={{ fontWeight: 400 }}>
-            {u.studentId} · {u.campus === 'chennai' ? 'VIT Chennai' : 'VIT Vellore'}
+            {u.studentId} · {u.email.split('@')[1]}
           </span>
         </span>
       </NavLink>

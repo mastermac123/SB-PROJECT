@@ -25,39 +25,38 @@ import {
   Stepper,
   Switch,
   Tabs,
-  TestModeBadge,
   VerifiedBadge,
 } from '@/components/ui'
 import { placeById } from '@/data/places'
-import { communityRides, SEED_USERS } from '@/data/seed'
 import { hhmm, isoDate } from '@/lib/format'
+import { polylineLengthKm, syntheticRoute } from '@/lib/geo'
 import { scoreRide } from '@/lib/matching'
-import type { MatchResult, Place } from '@/lib/types'
-import { validateStudentId, validateVitEmail } from '@/lib/validation'
-import { estimateRoute } from '@/services/routing'
+import type { MatchResult, Place, Ride, SearchQuery } from '@/lib/types'
+import { validateCollegeEmail, validateStudentId } from '@/lib/validation'
 import { SuccessMark } from './trip'
 
-/** Build realistic match results from the seed data for documentation. */
+/** Sample match results for documentation only — computed with the real scoring code. */
 function useSamples(): MatchResult[] {
   return useMemo(() => {
-    const rides = communityRides(new Date(Date.now() - 6 * 3600_000))
-    const out: MatchResult[] = []
-    const pickups: [string, Place][] = [
-      ['rahul-tnagar', placeById('vit-chennai')!],
-      ['ananya-velachery', placeById('vit-chennai-lh')!],
-      ['karthik-tambaram', placeById('vit-chennai')!],
-      ['nikhil-annanagar', placeById('medavakkam')!],
-    ]
-    for (const [key, pickup] of pickups) {
-      const ride = rides.find((r) => r.id.startsWith(`r_${key}_`))
-      if (!ride) continue
-      const driver = SEED_USERS.find((u) => u.id === ride.driverId)!
-      const d = new Date(ride.departAt)
-      const q = { pickup, drop: ride.destination, date: isoDate(d), time: hhmm(new Date(d.getTime() - (key === 'nikhil-annanagar' ? 70 : 5) * 60_000)), seats: 1, preferences: key === 'nikhil-annanagar' ? (['quiet'] as const).slice() : [] }
-      const m = scoreRide({ query: q, ride, route: estimateRoute(ride.origin, ride.destination), driver, vehicle: driver.vehicle! })
-      if (m) out.push(m)
+    const campus = placeById('vit-campus')!
+    const sample = (id: string, name: string, to: string, pickup: Place, minutesOff: number, rating: number, count: number, model: string, prefs: SearchQuery['preferences'] = []) => {
+      const destination = placeById(to)!
+      const coords = syntheticRoute(campus, destination)
+      const depart = new Date(Date.now() + 3 * 3600_000)
+      const ride: Ride = {
+        id, driverId: id, origin: campus, destination, departAt: depart.toISOString(), seatsTotal: 3, seatsBooked: 0, farePerSeat: 120,
+        maxDetourKm: 3, preferences: ['no_smoking'], vehicleId: 'v', status: 'scheduled', createdAt: '', distanceKm: polylineLengthKm(coords), durationMin: 55, route: coords,
+      }
+      const at = new Date(depart.getTime() - minutesOff * 60_000)
+      const q: SearchQuery = { pickup, drop: destination, date: isoDate(at), time: hhmm(at), at: at.toISOString(), seats: 1, preferences: prefs }
+      const driver = { id, name, rating, ratingCount: count, ridesOffered: count, ridesTaken: 2, completionRate: 0.96 }
+      return scoreRide({ query: q, ride, route: { coords, distanceKm: ride.distanceKm, durationMin: 55 }, driver, vehicle: { id: 'v', make: 'Honda', model, color: 'White', plate: 'MH 01 AB 1234', seats: 3, fuel: 'petrol' } })
     }
-    return out
+    return [
+      sample('s1', 'Rahul Sharma', 'malad', campus, 5, 4.8, 32, 'City'),
+      sample('s2', 'Ananya Iyer', 'andheri', placeById('wadala-rd')!, 10, 4.9, 47, 'Amaze'),
+      sample('s3', 'Karan Mehta', 'thane', placeById('sion')!, 70, 4.4, 9, 'Jazz', ['quiet']),
+    ].filter((m): m is MatchResult => !!m)
   }, [])
 }
 
@@ -260,15 +259,15 @@ export function DesignSystem() {
 
         <Block title="Inputs">
           <div className="ds-grid ds-grid--2">
-            <Field label="VIT email" placeholder="name.surname2023@vitstudent.ac.in" leading={<Mail />} />
-            <Field label="Register number" defaultValue="22BCE1187" valid leading={<IdCard />} />
-            <Field label="VIT email" defaultValue="aarav@gmail.com" error={validateVitEmail('aarav@gmail.com')} leading={<Mail />} />
+            <Field label="VIT email" placeholder="firstname.lastname@vit.edu.in" leading={<Mail />} />
+            <Field label="Student ID" defaultValue="VIT22CE118" valid leading={<IdCard />} />
+            <Field label="VIT email" defaultValue="aarav@gmail.com" error={validateCollegeEmail('aarav@gmail.com')} leading={<Mail />} />
             <Field label="Full name" defaultValue="Aarav Menon" disabled hint="Matches your VIT records" />
           </div>
           <div className="row wrap gap-6" style={{ marginTop: 8 }}>
             <Stepper label="Seats" value={seats} onChange={setSeats} />
             <Switch label="Demo switch" checked={sw} onChange={setSw} />
-            <Plate>TN 14 AB 1234</Plate>
+            <Plate>MH 01 AB 1234</Plate>
           </div>
         </Block>
 
@@ -297,7 +296,6 @@ export function DesignSystem() {
             <Badge tone="warning">Requested</Badge>
             <Badge tone="error">Cancelled</Badge>
             <Badge tone="info">Arriving</Badge>
-            <TestModeBadge />
             <Seats total={4} taken={1} />
           </div>
         </Block>
@@ -330,10 +328,10 @@ export function DesignSystem() {
         <Block title="Lists, routes, notices">
           <div className="ds-grid ds-grid--2" style={{ alignItems: 'start' }}>
             <div className="card card--pad stack gap-4">
-              <Stops from={{ title: 'VIT Chennai', subtitle: 'Main Gate', time: '5:35 PM' }} to={{ title: 'T. Nagar', subtitle: 'Pondy Bazaar' }} />
+              <Stops from={{ title: 'VIT Wadala', subtitle: 'Wadala (E)', time: '5:35 PM' }} to={{ title: 'Malad', subtitle: 'Malad Station' }} />
               <hr className="divider" />
               <div className="list">
-                <ListRow icon={<CarFront />} title="Vehicle Information" subtitle="Maruti Baleno · TN 14 CD 9087" onClick={() => {}} />
+                <ListRow icon={<CarFront />} title="Vehicle Information" subtitle="Maruti Baleno · MH 01 CD 9087" onClick={() => {}} />
                 <ListRow icon={<BellRing />} title="Notifications" onClick={() => {}} />
               </div>
             </div>
@@ -469,24 +467,22 @@ export function StatesGallery() {
             </MiniHero>
           </Frame>
           <Frame label="Ride cancelled">
-            <MiniHero mark={<div className="result-mark result-mark--error"><CircleX /></div>} title="Ride cancelled" body="Karthik cancelled: plans changed. ₹70 refunded to your wallet." />
+            <MiniHero mark={<div className="result-mark result-mark--error"><CircleX /></div>} title="Ride cancelled" body="Karan cancelled: car trouble. You haven’t been charged." />
           </Frame>
           <Frame label="Payment success">
-            <MiniHero mark={<SuccessMark />} title="Payment successful" body="₹120 paid. Your seat with Rahul is confirmed.">
-              <TestModeBadge>Test transaction</TestModeBadge>
-            </MiniHero>
+            <MiniHero mark={<SuccessMark />} title="Seat confirmed" body="Rahul has been told you paid ₹120 by UPI." />
           </Frame>
           <Frame label="Payment failure">
-            <StateView tone="error" icon={<X />} title="Payment failed" body="Your bank declined this UPI payment. You haven’t been charged." actions={<><Button block>Try again</Button><Button variant="ghost" block>Choose another method</Button></>} />
+            <StateView tone="error" icon={<X />} title="Couldn’t confirm payment" body="We couldn’t reach RideSync to record your payment. If your UPI app showed success, you’ve paid — tap retry to record it." actions={<><Button block>Retry</Button><Button variant="ghost" block>Pay cash instead</Button></>} />
           </Frame>
           <Frame label="Driver arriving">
-            <LiveMini title="Arriving in 4 min" sub="Rahul is heading to VIT Chennai" progress={55} />
+            <LiveMini title="Arriving in 4 min" sub="Rahul is heading to VIT Wadala" progress={55} />
           </Frame>
           <Frame label="Ride started">
-            <LiveMini title="18 min to T. Nagar" sub="Enjoy the ride. Your trip is being tracked." progress={30} green />
+            <LiveMini title="18 min to Malad" sub="Enjoy the ride. Your trip is being tracked." progress={30} green />
           </Frame>
           <Frame label="Ride completed">
-            <MiniHero mark={<SuccessMark />} title="You’ve arrived" body="T. Nagar · ₹120 paid · ~2.4 kg CO₂ saved">
+            <MiniHero mark={<SuccessMark />} title="You’ve arrived" body="Malad · ₹120 paid · ~2.4 kg CO₂ saved">
               <div className="row gap-2">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <span key={n} className="star-btn is-on" style={{ width: 36, height: 36 }}>
@@ -514,13 +510,12 @@ export function StatesGallery() {
           </Frame>
           <Frame label="Invalid VIT email">
             <div style={{ padding: 16 }}>
-              <Field label="VIT email" defaultValue="aarav.menon@gmail.com" error={validateVitEmail('aarav.menon@gmail.com')} leading={<Mail />} />
+              <Field label="VIT email" defaultValue="aarav.menon@gmail.com" error={validateCollegeEmail('aarav.menon@gmail.com')} leading={<Mail />} />
             </div>
           </Frame>
           <Frame label="Invalid student ID">
             <div style={{ padding: 16 }} className="stack gap-4">
-              <Field label="Register number" defaultValue="22BC1187" error={validateStudentId('22BC1187')} leading={<IdCard />} />
-              <Field label="Register number" defaultValue="09BCE1187" error={validateStudentId('09BCE1187')} leading={<IdCard />} />
+              <Field label="Student ID" defaultValue="22 BC" error={validateStudentId('22 BC')} leading={<IdCard />} />
             </div>
           </Frame>
           <Frame label="Location off · inline">
@@ -552,7 +547,7 @@ function LiveMini({ title, sub, progress, green }: { title: string; sub: string;
           <span className="t-body t-strong">Rahul Sharma</span>
           <span className="t-sm t-muted">White Honda City</span>
         </div>
-        <Plate>TN 14 AB 1234</Plate>
+        <Plate>MH 01 AB 1234</Plate>
       </div>
       <div className="actions-row">
         <span className="action-tile">

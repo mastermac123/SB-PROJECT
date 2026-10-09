@@ -1,0 +1,26 @@
+# One-click deploy on Render (https://render.com): New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: ridesync
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/config
+    disk:
+      name: ridesync-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ALLOWED_EMAIL_DOMAIN
+        value: vit.edu.in
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false

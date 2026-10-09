@@ -24,7 +24,7 @@ There are no sparkles on every surface, no glow and no "thinking" animation. The
 
 ## Language
 
-The product uses Offer a Ride, Find a Ride, Verified VIT Student, AI Match, Shared Ride and cost share. Taxi and fare-market vocabulary is avoided. Prices are framed as cost-sharing, and drivers are capped at 1.5× the suggested contribution.
+The product uses Offer a Ride, Find a Ride, Verified VIT Student, AI Match, Shared Ride and cost share. Taxi and fare-market vocabulary is avoided. Prices are framed as cost-sharing; the server caps drivers at 1.5× the suggested contribution, and riders pay drivers directly (UPI or cash).
 
 ## Motion
 
@@ -47,4 +47,4 @@ Skeletons replace spinners for lists. `prefers-reduced-motion` is respected glob
 
 ## Geography
 
-The seed data is set around **VIT Chennai** (with some VIT Vellore weekend trips), because the brief's example plate `TN 14` is a Chennai registration. Places live in `src/data/places.ts`, so adding a campus is a data change.
+Places are set around **Vidyalankar Institute of Technology, Wadala (vit.edu.in)**, with common student destinations across Mumbai in `src/data/places.ts`. Search also falls back to OpenStreetMap for anything not in the list.

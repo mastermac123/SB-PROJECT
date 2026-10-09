@@ -1,65 +1,118 @@
 # RideSync AI
 
-AI-matched carpooling for the VIT community. Drivers and riders are both verified VIT students: a student with a car offers empty seats, and another student heading the same way books one.
+AI-matched carpooling for VIT students. A student with a car offers empty seats, and another student heading the same way books one. Only verified **@vit.edu.in** accounts can sign in. The server enforces this on every login.
 
-Built with React 19, TypeScript, Vite, Leaflet (OpenStreetMap / CARTO tiles), and Framer Motion.
+The app is a full stack: a React web app, a Node.js API, a SQLite database and live updates over Server-Sent Events. When a driver publishes a ride on one phone, it appears straight away on every other student's phone. Requests, acceptances, chat and the driver's live GPS position also move between devices in real time.
 
-## Run it
+---
+
+## 1. Run it on your computer
+
+You need **Node.js 22.13 or newer** (download it from https://nodejs.org).
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm test           # matching + validation unit tests
-npm run build      # typecheck + production build
+cp .env.example .env      # on Windows: copy .env.example .env
+npm run dev               # opens http://localhost:5173
 ```
 
-**Demo account:** `aarav.menon2022@vitstudent.ac.in` / `ridesync123`. The login screen also has a "Use the demo account" link. The account can both offer and find rides.
+To try two accounts on one computer before setting up Google or email, set `DEV_LOGIN=true` in `.env`. A "Local development sign-in" box then appears on the login page. Use a normal window for one student and a private/incognito window for the other. This box **never** works in production.
 
-New accounts work too. Email delivery isn't connected yet, so the verification code in test mode is **123456**.
+Login codes are printed in the terminal while email isn't set up (local development only).
 
-## What's in the box
+To test on your phone, connect it to the same Wi-Fi and open the "Network" address that `npm run dev` prints. Phones only allow GPS on `https://` pages or `localhost`, so test live location after deploying.
 
-| Area | Route |
+## 2. Turn on Google sign-in (recommended)
+
+1. Go to https://console.cloud.google.com/apis/credentials and create a project.
+2. Open **OAuth consent screen**, choose **External**, and fill in the app name and email.
+3. Open **Credentials → Create credentials → OAuth client ID**. Choose type **Web application**.
+4. Under **Authorised JavaScript origins**, add `http://localhost:5173` and your live site, e.g. `https://ridesync.onrender.com`.
+5. Copy the Client ID into `.env`:
+
+   ```
+   GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
+   ```
+
+Google's sign-in popup is told to prefer `vit.edu.in` accounts. The server then checks the verified email itself and rejects anything that doesn't end in `@vit.edu.in`.
+
+## 3. Turn on email login codes (works for every student)
+
+Students who don't use Google with their college email can sign in with a 6-digit code sent to their `@vit.edu.in` inbox. Add any SMTP provider to `.env`. Gmail example:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your.address@gmail.com
+SMTP_PASS=your-16-char-app-password      # Google Account → Security → App passwords
+MAIL_FROM="RideSync <your.address@gmail.com>"
+```
+
+Brevo, Resend, Zoho and Amazon SES work the same way and scale better. Codes expire after 10 minutes, are single-use, and are rate-limited.
+
+## 4. Put it online
+
+The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.
+
+**Render (simplest):** push this repo to GitHub. In Render, choose **New → Blueprint** and pick the repo; `render.yaml` sets everything up, including a 1 GB disk. Enter `GOOGLE_CLIENT_ID` and the SMTP values when Render asks. Then add the Render URL to the Google "Authorised JavaScript origins".
+
+**Any Docker host** (Railway, Fly.io, a VPS):
+
+```bash
+docker build -t ridesync .
+docker run -p 8787:8787 -v ridesync-data:/data --env-file .env ridesync
+```
+
+**Without Docker:** run `npm run build`, then `npm start`, behind HTTPS.
+
+Production must be served over **HTTPS**. Login cookies are marked secure, and phones need HTTPS to share GPS.
+
+---
+
+## How it works
+
+| Step | What happens |
 |---|---|
-| Splash, landing, login, register, email verification, forgot password | `/`, `/welcome`, `/login`, `/register`, `/verify`, `/forgot` |
-| Onboarding: commute mode, vehicle, permissions | `/onboarding` |
-| Home (map-first, find or offer) | `/home` |
-| Find a Ride → AI match results → ride details | `/find`, `/find/results`, `/ride/:id` |
-| Booking states → payment → live ride → rating | `/trip/:id`, `/pay/:id`, `/live/:id` |
-| Offer a Ride → requests (accept / decline) → start / complete | `/offer`, `/drive/:id` |
-| My Rides, Wallet, Profile (+ sections), Notifications, Chat, Settings | `/rides`, `/wallet`, `/profile`, `/notifications`, `/chat`, `/settings` |
-| **Design system** and **screen states gallery** | `/design-system`, `/states` |
+| Sign in | Google sign-in or an email code. The server verifies the email ends in `@vit.edu.in`, creates the account on first login, and sets a 30-day httpOnly session cookie. |
+| Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
+| Offer a Ride | The server gets the road route (OSRM), suggests a cost-share and enforces the 1.5× cap. Every online student's search and Home feed refresh straight away. |
+| Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
+| Book | The rider requests a seat and the driver gets a live notification. The driver accepts or declines, and seats can't be overbooked. |
+| Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**. The driver can mark payment as received. RideSync never holds money, so no payment-gateway account is needed. |
+| Ride | The driver taps Start. Their phone shares GPS every few seconds and riders see the car move on the map. The driver then taps Arrived → Picked up → Dropped off → Complete. |
+| After | Both sides rate each other. Ratings, rides offered and taken, completion rate and CO₂ saved are calculated from real trips. |
 
-Mobile is the primary layout: a full-bleed map with a draggable bottom sheet. At 1024px and wider the app switches to a sidebar plus a two-column mobility layout (information panel + map), rather than stretching the mobile UI.
+Also included: chat for each booking, in-app and browser notifications, an SOS sheet (112, plus a text to your emergency contacts with your location), My Rides history, a payment record, and account deletion.
 
-## Architecture
+## Project layout
 
 ```
-src/
-  lib/          types, geo maths, AI match scoring, validation, formatting (pure, tested)
-  data/         VIT places and seed community (students, cars, rides)
-  services/
-    db.ts         local persistence (localStorage) — stands in for the backend
-    api.ts        the only module that reads/writes data; async, with latency + offline errors
-    routing.ts    OSRM road routing with an offline estimate fallback
-    payments.ts   PaymentGateway interface + sandbox gateway
-  components/   design-system components (Button, Field, BottomSheet, MapView, RideCard…)
-  layouts/      AppShell, MapScreen (sheet ↔ panel), Page, AuthLayout
-  screens/      one file per product area
-  styles/       tokens.css → base → components → layouts → screens
+server/            Node API (Express + built-in node:sqlite)
+  auth.ts            Google ID-token check, email codes, sessions, domain rule
+  routes.ts          rides, matching, bookings, payments, chat, notifications, live location
+  db.ts              schema
+  events.ts          Server-Sent Events for live updates
+src/               React web app
+  lib/               shared with the server: types, AI matching, geo, validation
+  services/api.ts    API client, live-update connection, query cache
+  screens/           each product area
+docs/              design notes and how matching works
 ```
 
-### Honest limits of this build
+## Checks
 
-- **No backend yet.** `services/api.ts` runs against local storage, so data lives in your browser. Every function is async and returns realistic errors, so replacing it with HTTP calls touches one module.
-- **The community is simulated.** Seed students accept requests, request seats on rides you publish, and reply in chat (`processScheduled` in `api.ts`). One seeded driver always declines, so the "ride declined" state is reachable.
-- **Payments are sandbox only** and labelled "Test mode" everywhere. No money moves. `services/payments.ts` documents the steps for a real gateway (order → checkout → server-side signature verification). Test values: UPI `fail@test` and card `4000 0000 0000 0002` simulate declines.
-- **Live tracking is simulated** on a timeline (driver arrives in about 30 s, trip takes about 50 s). In production these transitions come from the driver's GPS.
-- **Google sign-in** works when `VITE_GOOGLE_CLIENT_ID` is set, and only `@vitstudent.ac.in` accounts are accepted. Without the variable, the button explains that it isn't configured.
-- Testing tools live under **Settings → Testing**: simulate offline, and reset local data.
+```bash
+npm test          # 17 tests, including a full two-account ride against the real API
+npm run typecheck
+```
 
-See [`docs/DESIGN.md`](docs/DESIGN.md) for design decisions and [`docs/AI-MATCHING.md`](docs/AI-MATCHING.md) for how matching works.
+The tests cover:
 
-## Brand
-
-The logo in `public/brand/` is the supplied artwork. `ridesync-logo-original.webp` is untouched. The PNG variants are crops of it (full, without tagline, mark only), never redrawn.
+- domain enforcement and look-alike domains
+- the CSRF check
+- email codes
+- onboarding rules
+- privacy (phone and UPI ID hidden until a booking is accepted)
+- overbooking
+- declines and cancellations
+- the full driver ↔ rider lifecycle

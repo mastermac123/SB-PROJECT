@@ -1,9 +1,8 @@
 import { MotionConfig } from 'framer-motion'
-import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './components/Toast'
 import { AppShell } from './layouts/AppShell'
-import { ForgotPassword, Landing, Login, Register, Splash, VerifyEmail } from './screens/auth'
+import { Landing, Login, Splash } from './screens/auth'
 import { DesignSystem, StatesGallery } from './screens/design'
 import { DriverRide, OfferRide } from './screens/drive'
 import { FindRide, MatchResults } from './screens/find'
@@ -17,19 +16,9 @@ import { RideDetails } from './screens/rideDetails'
 import { MyRides } from './screens/rides'
 import { TripStatus } from './screens/trip'
 import { Wallet } from './screens/wallet'
-import { processScheduled } from './services/api'
 import { SearchProvider } from './state/search'
 
-/** Drives the local community simulator (driver responses, incoming requests, replies). */
-function useSimulator() {
-  useEffect(() => {
-    const t = setInterval(processScheduled, 1000)
-    return () => clearInterval(t)
-  }, [])
-}
-
 export function App() {
-  useSimulator()
   return (
     <MotionConfig reducedMotion="user">
       <ToastProvider>
@@ -39,9 +28,6 @@ export function App() {
               <Route path="/" element={<Splash />} />
               <Route path="/welcome" element={<Landing />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/verify" element={<VerifyEmail />} />
-              <Route path="/forgot" element={<ForgotPassword />} />
               <Route path="/design-system" element={<DesignSystem />} />
               <Route path="/states" element={<StatesGallery />} />
 

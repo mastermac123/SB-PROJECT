@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Ban, Bell, CarFront, CigaretteOff, Clock, PawPrint, Pencil, Route as RouteIcon, SearchX, Sparkle, TriangleAlert, Venus, VolumeX } from 'lucide-react'
+import { ArrowRight, Ban, CarFront, CigaretteOff, Clock, PawPrint, Pencil, Route as RouteIcon, SearchX, Sparkle, TriangleAlert, Venus, VolumeX } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapView, type MapMarker, type MapRoute } from '@/components/MapView'
@@ -8,16 +8,14 @@ import { NetworkError, StateView } from '@/components/States'
 import { BackButton } from '@/components/TopBar'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
 import { Button, Chip, Notice, RideCardSkeleton, Segmented } from '@/components/ui'
-import { useToast } from '@/components/Toast'
-import { CAMPUSES } from '@/data/places'
+import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayLabel, plural } from '@/lib/format'
 import { desiredTime, PREFERENCE_LABEL, sortMatches, type SortKey } from '@/lib/matching'
+import { haversineKm, ROAD_CIRCUITY } from '@/lib/geo'
 import type { MatchResult, RidePreference, SearchQuery } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { me } from '@/services/api'
-import { useDB } from '@/services/db'
-import { estimateRoute, routeNow } from '@/services/routing'
+import { useMe } from '@/services/api'
 import { defaultQuery, useEnsureResults, useSearch } from '@/state/search'
 
 export const PREF_OPTIONS: { value: RidePreference; icon: React.ReactNode }[] = [
@@ -33,17 +31,15 @@ export const PREF_OPTIONS: { value: RidePreference; icon: React.ReactNode }[] = 
    ========================================================================== */
 
 export function FindRide() {
-  const db = useDB()
-  const u = me(db)!
   const nav = useNavigate()
   const search = useSearch()
-  const base = search.query ?? defaultQuery(CAMPUSES[u.campus].gate)
+  const base = search.query ?? defaultQuery(CAMPUS)
   const [draft, setDraft] = useState<TripDraft>({ pickup: base.pickup, drop: search.query ? base.drop : null, date: base.date, time: base.time, seats: base.seats })
   const [prefs, setPrefs] = useState<RidePreference[]>(search.query?.preferences ?? [])
   const [errors, setErrors] = useState<ReturnType<typeof validateTrip>>({})
   const padding = useMapPadding(0.66)
 
-  const preview = draft.pickup && draft.drop && draft.pickup.id !== draft.drop.id ? estimateRoute(draft.pickup, draft.drop) : null
+  const preview = draft.pickup && draft.drop && draft.pickup.id !== draft.drop.id ? haversineKm(draft.pickup, draft.drop) * ROAD_CIRCUITY : null
   const markers: MapMarker[] = [
     ...(draft.pickup ? [{ id: 'p', at: draft.pickup, kind: 'pickup' as const, label: draft.pickup.name }] : []),
     ...(draft.drop ? [{ id: 'd', at: draft.drop, kind: 'drop' as const, label: draft.drop.name }] : []),
@@ -77,7 +73,7 @@ export function FindRide() {
       }
     >
       <div className="stack gap-5">
-        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} campus={u.campus} userId={u.id} errors={errors} />
+        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} />
         <div className="stack gap-3">
           <div className="row row--between">
             <h2 className="section__title" style={{ padding: 0 }}>
@@ -103,7 +99,7 @@ export function FindRide() {
         {preview && (
           <p className="t-sm t-muted row gap-2">
             <Clock size={15} />
-            About {Math.round(preview.distanceKm)} km · {preview.durationMin} min by car
+            About {Math.round(preview)} km by road
           </p>
         )}
       </div>
@@ -116,10 +112,9 @@ export function FindRide() {
    ========================================================================== */
 
 export function MatchResults() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
-  const toast = useToast()
   const desktop = useIsDesktop()
   const search = useEnsureResults()
   const [sort, setSort] = useState<SortKey>('best')
@@ -139,12 +134,10 @@ export function MatchResults() {
     )
   }
 
-  const ridesThatWindow = db.rides.filter(
-    (r) => r.status === 'scheduled' && r.driverId !== u.id && Math.abs(+new Date(r.departAt) - desiredTime(q).getTime()) < 4.5 * 3600_000 && +new Date(r.departAt) > Date.now(),
-  ).length
+  const ridesThatWindow = search.ridesInWindow
 
   const focus: MatchResult | undefined = sorted.find((m) => m.ride.id === hover) ?? sorted[0]
-  const routes: MapRoute[] = sorted.slice(0, 6).map((m) => ({ id: m.ride.id, coords: routeNow(m.ride.origin, m.ride.destination).coords, kind: m.ride.id === focus?.ride.id ? 'primary' : 'alt' }))
+  const routes: MapRoute[] = sorted.slice(0, 6).map((m) => ({ id: m.ride.id, coords: m.ride.route, kind: m.ride.id === focus?.ride.id ? 'primary' : 'alt' }))
   const markers: MapMarker[] = [
     { id: 'p', at: q.pickup, kind: 'pickup', label: 'Pickup', sublabel: q.pickup.name },
     { id: 'd', at: q.drop, kind: 'drop', label: q.drop.name },
@@ -220,16 +213,11 @@ export function MatchResults() {
               <StateView
                 icon={<CarFront />}
                 title="No rides offered yet"
-                body={`No one from the VIT community has offered a ride around ${desiredTime(q).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} ${dayLabel(desiredTime(q)).toLowerCase()}. Rides are usually posted a few hours before departure.`}
+                body={`No one from the VIT community has offered a ride around ${desiredTime(q).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} ${dayLabel(desiredTime(q)).toLowerCase()}. This list updates live — new rides appear here the moment they’re posted.`}
                 actions={
-                  <>
-                    <Button block icon={<Bell />} onClick={() => toast({ tone: 'success', message: 'We’ll notify you when a matching ride is posted' })}>
-                      Notify me when one is posted
-                    </Button>
-                    <Button variant="ghost" block onClick={() => nav('/find')}>
-                      Change time
-                    </Button>
-                  </>
+                  <Button block variant="secondary" onClick={() => nav('/find')}>
+                    Change time or route
+                  </Button>
                 }
               />
             ) : (
@@ -243,9 +231,7 @@ export function MatchResults() {
                     <Button block onClick={() => nav('/find')}>
                       Adjust search
                     </Button>
-                    <Button variant="ghost" block icon={<Bell />} onClick={() => toast({ tone: 'success', message: 'We’ll notify you when a matching ride is posted' })}>
-                      Notify me
-                    </Button>
+
                   </>
                 }
               />

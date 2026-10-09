@@ -1,9 +1,8 @@
-import { Building2, GraduationCap, House, LocateFixed, MapPin, Plane, Search, TrainFront, X } from 'lucide-react'
+import { Building2, GraduationCap, LocateFixed, MapPin, Plane, Search, TrainFront, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { placeById, searchPlaces } from '@/data/places'
-import type { CampusId, Place } from '@/lib/types'
+import { searchPlaces } from '@/data/places'
+import type { Place } from '@/lib/types'
 import { ApiError, requestLocation } from '@/services/api'
-import { useDB } from '@/services/db'
 import { ModalSheet } from './Sheet'
 import { Field, IconButton, ListRow, Notice } from './ui'
 
@@ -17,7 +16,7 @@ const KIND_ICON = {
 
 /** Search OpenStreetMap (Nominatim) for places beyond the curated list. */
 async function searchOSM(q: string, signal: AbortSignal): Promise<Place[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&viewbox=76.5,14.5,81.5,11.5&bounded=1&q=${encodeURIComponent(q)}`
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&viewbox=72.7,19.45,73.2,18.85&bounded=1&q=${encodeURIComponent(q)}`
   const res = await fetch(url, { signal, headers: { 'Accept-Language': 'en' } })
   if (!res.ok) return []
   const rows = (await res.json()) as { place_id: number; lat: string; lon: string; name: string; display_name: string }[]
@@ -36,17 +35,12 @@ export function PlacePicker({
   title,
   onClose,
   onPick,
-  campus,
-  userId,
 }: {
   open: boolean
   title: string
   onClose: () => void
   onPick: (p: Place) => void
-  campus?: CampusId
-  userId?: string
 }) {
-  const db = useDB()
   const [q, setQ] = useState('')
   const [remote, setRemote] = useState<Place[]>([])
   const [locating, setLocating] = useState(false)
@@ -77,11 +71,9 @@ export function PlacePicker({
     }
   }, [q])
 
-  const local = searchPlaces(q, campus)
+  const local = searchPlaces(q)
   const localIds = new Set(local.map((p) => p.name.toLowerCase()))
   const extra = remote.filter((p) => !localIds.has(p.name.toLowerCase()))
-  const saved = userId ? db.savedPlaces[userId] : undefined
-  const home = saved?.home ? placeById(saved.home) : undefined
 
   async function useLocation() {
     setLocating(true)
@@ -131,7 +123,6 @@ export function PlacePicker({
                   </Notice>
                 </div>
               )}
-              {home && <ListRow icon={<House />} title="Home" subtitle={`${home.name} · ${home.area}`} onClick={() => pick(home)} chevron={false} />}
               <div className="section__title" style={{ padding: '12px 0 4px' }}>
                 Popular with VIT students
               </div>

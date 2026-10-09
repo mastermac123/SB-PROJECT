@@ -5,11 +5,11 @@ import { StateView } from '@/components/States'
 import { TopBar } from '@/components/TopBar'
 import { Avatar, Button, IconButton, Notice, cx } from '@/components/ui'
 import { firstName, relative, time } from '@/lib/format'
-import type { NotificationKind } from '@/lib/types'
+import type { AppNotification, Message, NotificationKind, Thread } from '@/lib/types'
 import { Page } from '@/layouts/Page'
-import { ApiError, bookingById, markAllRead, markRead, me, requestNotificationPermission, rideById, sendMessage, threadsFor, userById } from '@/services/api'
-import { useDB } from '@/services/db'
+import { ApiError, Q, bookings, notificationPermission, notifications, requestNotificationPermission, useMe, useQuery, type BookingDetail } from '@/services/api'
 import { useToast } from '@/components/Toast'
+import { RideCardSkeleton } from '@/components/ui'
 
 const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
   request: <UserPlus />,
@@ -28,12 +28,11 @@ const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
    ========================================================================== */
 
 export function Notifications() {
-  const db = useDB()
-  const u = me(db)!
   const nav = useNavigate()
-  const list = db.notifications.filter((n) => n.userId === u.id)
+  const q = useQuery<AppNotification[]>(Q.notifications)
+  const list = q.data ?? []
   const unread = list.filter((n) => !n.read).length
-  const perm = db.settings.notificationPermission
+  const [perm, setPerm] = useState(notificationPermission())
 
   const today = list.filter((n) => Date.now() - +new Date(n.createdAt) < 86_400_000)
   const earlier = list.filter((n) => Date.now() - +new Date(n.createdAt) >= 86_400_000)
@@ -43,7 +42,7 @@ export function Notifications() {
       title="Notifications"
       actions={
         unread > 0 ? (
-          <Button size="sm" variant="ghost" onClick={markAllRead} style={{ marginRight: 4 }}>
+          <Button size="sm" variant="ghost" onClick={() => notifications.readAll()} style={{ marginRight: 4 }}>
             Mark all read
           </Button>
         ) : (
@@ -58,7 +57,7 @@ export function Notifications() {
             icon={<Bell />}
             title="Get notified instantly"
             action={
-              <Button size="sm" variant="tonal" onClick={() => requestNotificationPermission()}>
+              <Button size="sm" variant="tonal" onClick={async () => setPerm(await requestNotificationPermission())}>
                 Turn on
               </Button>
             }
@@ -74,7 +73,9 @@ export function Notifications() {
           </Notice>
         </div>
       )}
-      {list.length === 0 ? (
+      {q.loading ? (
+        <RideCardSkeleton />
+      ) : list.length === 0 ? (
         <StateView icon={<Bell />} title="You’re all caught up" body="Ride requests, confirmations and messages will show up here." />
       ) : (
         <div className="stack">
@@ -92,7 +93,7 @@ export function Notifications() {
                     type="button"
                     className={cx('notif', !n.read && 'is-unread')}
                     onClick={() => {
-                      markRead(n.id)
+                      if (!n.read) void notifications.read(n.id)
                       if (n.link) nav(n.link)
                     }}
                   >
@@ -120,18 +121,21 @@ export function Notifications() {
    ========================================================================== */
 
 export function ChatList() {
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
-  const threads = threadsFor(u.id, db)
+  const q = useQuery<Thread[]>(Q.threads)
+  const threads = q.data ?? []
   return (
     <Page title="Messages">
-      {threads.length === 0 ? (
+      {q.loading ? (
+        <RideCardSkeleton />
+      ) : threads.length === 0 ? (
         <StateView icon={<MessageCircle />} title="No messages yet" body="Once a ride is confirmed you can message your driver or riders here." />
       ) : (
         <div className="list">
           {threads.map((t) => (
-            <button key={t.booking.id} type="button" className="list-row" onClick={() => nav(`/chat/${t.booking.id}`)}>
+            <button key={t.bookingId} type="button" className="list-row" onClick={() => nav(`/chat/${t.bookingId}`)}>
               <Avatar name={t.other.name} src={t.other.photo} verified />
               <span className="list-row__body">
                 <span className="row row--between gap-2">
@@ -152,39 +156,43 @@ const QUICK = ['I’m at the pickup point', 'Running 2 min late', 'Where are you
 
 export function ChatThread() {
   const { bookingId } = useParams()
-  const db = useDB()
-  const u = me(db)!
+  const { user } = useMe()
+  const u = user!
   const nav = useNavigate()
   const toast = useToast()
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [optimistic, setOptimistic] = useState<Message[]>([])
   const end = useRef<HTMLDivElement>(null)
-  const booking = bookingId ? bookingById(bookingId, db) : undefined
-  const msgs = booking ? db.messages.filter((m) => m.threadId === booking.id) : []
-  const typing = booking ? db.scheduled.some((e) => e.type === 'chat_reply' && e.payload.threadId === booking.id) : false
+  const detail = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
+  const mq = useQuery<Message[]>(bookingId ? Q.messages(bookingId) : null)
+  const notes = useQuery<AppNotification[]>(Q.notifications)
+  const msgs = [...(mq.data ?? []), ...optimistic.filter((o) => !(mq.data ?? []).some((m) => m.senderId === o.senderId && m.text === o.text && Math.abs(+new Date(m.createdAt) - +new Date(o.createdAt)) < 60_000))]
 
   useLayoutEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
-  }, [msgs.length, typing])
+  }, [msgs.length])
 
   useEffect(() => {
     // Mark chat notifications for this thread as read.
-    db.notifications.filter((n) => n.kind === 'chat' && n.link === `/chat/${bookingId}` && !n.read).forEach((n) => markRead(n.id))
-  }, [db.notifications, bookingId])
+    notes.data?.filter((n) => n.kind === 'chat' && n.link === `/chat/${bookingId}` && !n.read).forEach((n) => void notifications.read(n.id))
+  }, [notes.data, bookingId])
 
-  if (!booking) return <Navigate to="/chat" replace />
-  const ride = rideById(booking.rideId, db)!
-  const otherId = booking.riderId === u.id ? ride.driverId : booking.riderId
-  const other = userById(otherId, db)!
-  const closed = ['completed', 'cancelled', 'rejected'].includes(booking.status)
+  if (detail.loading) return <div className="page"><div className="page__content" style={{ paddingTop: 40 }}><RideCardSkeleton /></div></div>
+  if (!detail.data) return <Navigate to="/chat" replace />
+  const { booking, ride } = detail.data
+  const other = detail.data.role === 'rider' ? detail.data.driver : detail.data.rider
+  const otherPhone = detail.data.role === 'rider' ? detail.data.driverPhone : detail.data.riderPhone
+  const closed = ['cancelled', 'rejected', 'pending'].includes(booking.status) || (booking.status === 'completed' && Date.now() - +new Date(booking.updatedAt) > 86_400_000)
 
   async function send(t: string) {
     const v = t.trim()
     if (!v) return
     setSending(true)
     try {
-      await sendMessage(booking!.id, v)
       setText('')
+      setOptimistic((o) => [...o, { id: `tmp-${Date.now()}`, threadId: booking.id, senderId: u.id, text: v, createdAt: new Date().toISOString() }])
+      await bookings.send(booking.id, v)
     } catch (e) {
       toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Message not sent' })
     } finally {
@@ -207,9 +215,13 @@ export function ChatThread() {
           </span>
         }
         actions={
-          <a className="icon-btn" href={`tel:+91${other.phone}`} aria-label={`Call ${firstName(other.name)}`}>
-            <Phone />
-          </a>
+          otherPhone ? (
+            <a className="icon-btn" href={`tel:+91${otherPhone}`} aria-label={`Call ${firstName(other.name)}`}>
+              <Phone />
+            </a>
+          ) : (
+            <span className="topbar__spacer" />
+          )
         }
       />
       <div className="chat-scroll">
@@ -230,22 +242,13 @@ export function ChatThread() {
               </div>
             )
           })}
-          {typing && (
-            <div className="bubble bubble--them" style={{ padding: 0 }} aria-label={`${firstName(other.name)} is typing`}>
-              <span className="typing">
-                <span />
-                <span />
-                <span />
-              </span>
-            </div>
-          )}
           <div ref={end} />
         </div>
       </div>
       {closed ? (
         <div className="composer" style={{ justifyContent: 'center' }}>
           <span className="t-sm t-muted" style={{ padding: 10 }}>
-            This ride has ended. Chat is closed.{' '}
+            {booking.status === 'pending' ? 'Chat opens once the driver accepts.' : 'This ride has ended. Chat is closed.'}{' '}
             <button className="t-strong t-primary" onClick={() => nav('/rides')}>
               My Rides
             </button>

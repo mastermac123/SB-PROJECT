@@ -1,0 +1,152 @@
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { env } from './env'
+
+/**
+ * SQLite via Node's built-in driver: a single file, no native modules.
+ * For deployment, put DATABASE_PATH on a persistent disk/volume.
+ */
+if (env.databasePath !== ':memory:') mkdirSync(dirname(env.databasePath), { recursive: true })
+export const db = new DatabaseSync(env.databasePath)
+db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  photo TEXT,
+  phone TEXT NOT NULL DEFAULT '',
+  student_id TEXT NOT NULL DEFAULT '',
+  programme TEXT,
+  gender TEXT NOT NULL DEFAULT 'undisclosed',
+  commute TEXT,
+  upi_id TEXT,
+  preferences TEXT NOT NULL DEFAULT '[]',
+  emergency_contacts TEXT NOT NULL DEFAULT '[]',
+  onboarded INTEGER NOT NULL DEFAULT 0,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vehicles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+  make TEXT NOT NULL,
+  model TEXT NOT NULL,
+  color TEXT NOT NULL,
+  plate TEXT NOT NULL,
+  seats INTEGER NOT NULL,
+  fuel TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS otp_codes (
+  email TEXT PRIMARY KEY,
+  code_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  sent_count INTEGER NOT NULL DEFAULT 1,
+  window_start TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rides (
+  id TEXT PRIMARY KEY,
+  driver_id TEXT NOT NULL REFERENCES users(id),
+  origin TEXT NOT NULL,
+  destination TEXT NOT NULL,
+  depart_at TEXT NOT NULL,
+  seats_total INTEGER NOT NULL,
+  fare_per_seat INTEGER NOT NULL,
+  max_detour_km REAL NOT NULL,
+  preferences TEXT NOT NULL DEFAULT '[]',
+  vehicle_id TEXT NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  route TEXT NOT NULL,
+  distance_km REAL NOT NULL,
+  duration_min INTEGER NOT NULL,
+  driver_location TEXT,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  ended_at TEXT
+);
+CREATE INDEX IF NOT EXISTS rides_depart ON rides(status, depart_at);
+CREATE INDEX IF NOT EXISTS rides_driver ON rides(driver_id);
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id TEXT PRIMARY KEY,
+  ride_id TEXT NOT NULL REFERENCES rides(id),
+  rider_id TEXT NOT NULL REFERENCES users(id),
+  pickup TEXT NOT NULL,
+  drop_place TEXT NOT NULL,
+  seats INTEGER NOT NULL,
+  fare INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  match_score INTEGER NOT NULL,
+  message TEXT,
+  payment_method TEXT,
+  payment_status TEXT NOT NULL DEFAULT 'unpaid',
+  payment_ref TEXT,
+  paid_at TEXT,
+  arrived_at TEXT,
+  picked_up_at TEXT,
+  dropped_at TEXT,
+  cancelled_by TEXT,
+  cancel_reason TEXT,
+  rider_rating INTEGER,
+  driver_rating INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS bookings_ride ON bookings(ride_id);
+CREATE INDEX IF NOT EXISTS bookings_rider ON bookings(rider_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  booking_id TEXT NOT NULL REFERENCES bookings(id),
+  sender_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  system INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS messages_booking ON messages(booking_id, created_at);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  link TEXT,
+  read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, created_at);
+`)
+
+export type Row = Record<string, unknown>
+
+export const one = <T = Row>(sql: string, ...params: unknown[]) => db.prepare(sql).get(...(params as never[])) as T | undefined
+export const all = <T = Row>(sql: string, ...params: unknown[]) => db.prepare(sql).all(...(params as never[])) as T[]
+export const run = (sql: string, ...params: unknown[]) => db.prepare(sql).run(...(params as never[]))
+
+/** Run several statements atomically. */
+export function tx<T>(fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const r = fn()
+    db.exec('COMMIT')
+    return r
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
+}
