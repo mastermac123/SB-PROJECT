@@ -24,6 +24,44 @@ if (existsSync(ENV))
   }
 
 const ask = async (q, def = '') => (await question(def ? `${q} [${def}]: ` : `${q}: `)).trim() || def
+/** Like ask(), but shows **** instead of the characters (for passwords and secrets). */
+const askSecret = async (q, def = '') => {
+  if (!stdin.isTTY || lines.length || typeof stdin.setRawMode !== 'function') return ask(q, def)
+  stdout.write(def ? `${q} [keep current]: ` : `${q}: `)
+  const saved = stdin.listeners('data')
+  stdin.removeAllListeners('data')
+  stdin.setRawMode(true)
+  stdin.resume()
+  const value = await new Promise((resolve) => {
+    let s = ''
+    const onData = (buf) => {
+      for (const ch of buf.toString('utf8')) {
+        if (ch === '\r' || ch === '\n') return resolve(s)
+        if (ch === '\u0003') {
+          stdin.setRawMode(false)
+          process.exit(1)
+        }
+        if (ch === '\u007f' || ch === '\b') {
+          if (s) {
+            s = s.slice(0, -1)
+            stdout.write('\b \b')
+          }
+          continue
+        }
+        if (ch >= ' ') {
+          s += ch
+          stdout.write('*')
+        }
+      }
+    }
+    stdin.on('data', onData)
+  })
+  stdin.removeAllListeners('data')
+  stdin.setRawMode(false)
+  for (const l of saved) stdin.on('data', l)
+  stdout.write('\n')
+  return value.trim() || def
+}
 const yes = async (q) => /^y/i.test(await ask(`${q} (y/n)`, 'n'))
 const save = () => {
   const out = [...env].map(([k, v]) => `${k}=${/[\s#"]/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v}`).join('\n') + '\n'
@@ -42,7 +80,7 @@ if (await yes('Set up email so login codes arrive in students’ inboxes?')) {
   if (choice === '3') host = await ask('SMTP host', host)
   port = await ask('SMTP port', port)
   const user = await ask(choice === '2' ? 'Brevo SMTP login (looks like 1234ab@smtp-brevo.com)' : 'Email address / username', env.get('SMTP_USER'))
-  const pass = (await ask(choice === '1' ? 'Gmail App Password (16 letters, spaces are fine)' : 'SMTP password / key')).replace(/\s+/g, choice === '1' ? '' : ' ').trim() || env.get('SMTP_PASS') || ''
+  const pass = (await askSecret(choice === '1' ? 'Gmail App Password (16 letters, spaces are fine)' : 'SMTP password / key')).replace(/\s+/g, choice === '1' ? '' : ' ').trim() || env.get('SMTP_PASS') || ''
   const fromAddr = await ask('Send emails from (address)', choice === '2' ? '' : user)
   env.set('SMTP_HOST', host)
   env.set('SMTP_PORT', port)
@@ -76,7 +114,7 @@ if (env.get('SMTP_HOST') && (await yes('Add a BACKUP email account (used automat
   const host = c === '1' ? 'smtp-relay.brevo.com' : c === '2' ? 'smtp.gmail.com' : await ask('SMTP host', env.get('SMTP2_HOST'))
   const port = await ask('SMTP port', env.get('SMTP2_PORT') || '587')
   const user = await ask(c === '1' ? 'Brevo SMTP login (looks like 1234ab@smtp-brevo.com)' : 'Email address / username', env.get('SMTP2_USER'))
-  const pass = (await ask('Password / SMTP key / App Password')).replace(c === '2' ? /\s+/g : /^\s+|\s+$/g, '') || env.get('SMTP2_PASS') || ''
+  const pass = (await askSecret('Password / SMTP key / App Password')).replace(c === '2' ? /\s+/g : /^\s+|\s+$/g, '') || env.get('SMTP2_PASS') || ''
   const from = await ask('Send emails from (an address you verified with this service)', c === '2' ? user : (env.get('MAIL_FROM') || '').replace(/^.*<|>$/g, ''))
   env.set('SMTP2_HOST', host)
   env.set('SMTP2_PORT', port)
@@ -101,7 +139,7 @@ if (env.get('SMTP_HOST') && (await yes('Add a BACKUP email account (used automat
 if (await yes('Set up Razorpay online payments?')) {
   console.log('\n  razorpay.com → sign up → Dashboard (Test mode) → Account & Settings → API Keys → Generate Test Key.\n')
   env.set('RAZORPAY_KEY_ID', await ask('Key Id (starts with rzp_test_ or rzp_live_)', env.get('RAZORPAY_KEY_ID')))
-  env.set('RAZORPAY_KEY_SECRET', await ask('Key Secret', env.get('RAZORPAY_KEY_SECRET')))
+  env.set('RAZORPAY_KEY_SECRET', await askSecret('Key Secret', env.get('RAZORPAY_KEY_SECRET')))
   const wh = await ask('Webhook secret (optional — only after you add a webhook, see README)', env.get('RAZORPAY_WEBHOOK_SECRET'))
   if (wh) env.set('RAZORPAY_WEBHOOK_SECRET', wh)
   save()
