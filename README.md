@@ -117,9 +117,51 @@ How it works:
 
 Riders can still pay the driver directly by UPI, or in cash.
 
-## 3d. Maps (optional keys)
+## 3d. Maps
 
-Maps, place search and routes work with **no keys**, using free OpenStreetMap services. For better reliability with many users, add free keys:
+Maps, place search and routes work with **no keys**, using free OpenStreetMap services.
+
+### Google Maps (recommended for the best place search)
+
+One Google key switches on:
+
+- the Google map
+- Google place search
+- names for "Use current location"
+- driving routes with real distances and times
+
+If Google ever fails (wrong key, quota used up, billing off), RideSync quietly switches back to the free services.
+
+1. Go to https://console.cloud.google.com and create a project, e.g. `RideSync`.
+2. **Billing → Link a billing account.** Google requires a card even for the free usage. Each API includes a monthly amount of free usage; check https://mapsplatform.google.com/pricing for current limits.
+3. **APIs & Services → Library.** Enable these four:
+   - **Maps JavaScript API** (the map)
+   - **Places API (New)** (search)
+   - **Geocoding API** (current-location names)
+   - **Routes API** (driving routes)
+4. **APIs & Services → Credentials → Create credentials → API key.** Copy the key, which starts with `AIza`.
+5. Click the key → **API restrictions → Restrict key**. Tick only the four APIs above and save.
+6. Run the setup helper (`setup.bat` / `npm run setup`) and answer **y** to "Set up Google Maps". It checks each API and tells you if one isn't enabled. Or set the key in `.env`:
+   ```
+   GOOGLE_MAPS_API_KEY=AIza...
+   ```
+7. Restart. The terminal shows `map: Google · search: Google · routes: Google`.
+
+**Keep costs at zero:**
+
+- Go to **APIs & Services → each API → Quotas** and set a daily cap a little below the free amount. Google then stops answering instead of charging, and RideSync uses the free services for the rest of the day.
+- Also add a **budget alert** under Billing → Budgets & alerts, e.g. ₹100.
+
+How RideSync saves on Google usage:
+
+- Searches use **autocomplete sessions**: typing plus the final pick are billed as one lookup.
+- Results and routes are cached.
+- The popular VIT places in the list don't call Google at all.
+- The map is the part used most. To save money, set `GOOGLE_MAPS_DISPLAY=false`: the map stays the free one, while search and routes still use Google.
+
+**When you put RideSync online:** the map key is visible in the browser, which is normal for Google Maps. For extra safety, create a second key restricted to **Websites** → `https://your-site/*` with only Maps JavaScript API, and put it in `GOOGLE_MAPS_BROWSER_KEY`. The main key then stays on the server only.
+
+### Free alternatives
 
 - **MapTiler** (map tiles and place search): sign up at https://cloud.maptiler.com, copy your key, and set `MAPTILER_KEY`.
 - **OpenRouteService** (driving routes): sign up at https://openrouteservice.org, request a token, and set `ORS_API_KEY`.
@@ -149,12 +191,12 @@ Production must be served over **HTTPS**. Login cookies are marked secure, and p
 
 | Step | What happens |
 |---|---|
-| Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 30-day httpOnly session cookie. |
+| Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 90-day httpOnly session cookie. |
 | Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
-| Offer a Ride | The server gets the road route (OSRM), suggests a cost-share and enforces the 1.5× cap. Every online student's search and Home feed refresh straight away. |
+| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), suggests a cost-share and enforces the 1.5× cap. Every online student's search and Home feed refresh straight away. |
 | Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
 | Book | The rider requests a seat and the driver gets a live notification. The driver accepts or declines, and seats can't be overbooked. |
-| Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**. The driver can mark payment as received. RideSync never holds money, so no payment-gateway account is needed. |
+| Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**, or **pay online** when Razorpay is set up. The driver can mark UPI or cash payment as received. |
 | Ride | The driver taps Start. Their phone shares GPS every few seconds and riders see the car move on the map. The driver then taps Arrived → Picked up → Dropped off → Complete. |
 | After | Both sides rate each other. Ratings, rides offered and taken, completion rate and CO₂ saved are calculated from real trips. |
 
@@ -166,6 +208,8 @@ Also included: chat for each booking, in-app and browser notifications, an SOS s
 server/            Node API (Express + built-in node:sqlite)
   auth.ts            email codes, sessions, domain rule (+ Google)
   microsoft.ts       Sign in with Microsoft (VIT tenant only)
+  google.ts          Google Maps: place search, place names, routes
+  maps.ts / routing.ts  picks Google or the free map services, with fallback
   routes.ts          rides, matching, bookings, payments, chat, notifications, live location
   db.ts              schema
   events.ts          Server-Sent Events for live updates
@@ -179,13 +223,14 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 30 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds and webhooks
+npm test          # 37 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
 npm run typecheck
 ```
 
 The tests cover:
 
 - Razorpay: order amount, forged signatures, webhook confirmation, automatic refunds
+- Google Maps: search sessions, place details, route decoding, fallback when Google is down
 - Microsoft sign-in: wrong college directory, non-college emails, tampered or replayed sign-ins
 - domain enforcement and look-alike domains
 - the CSRF check

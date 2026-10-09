@@ -11,6 +11,9 @@ app.listen(env.port, () => {
   if (!anyMailConfigured()) console.log(env.isProd ? '[ridesync] SMTP not set — email-code login disabled' : '[ridesync] SMTP not set — login codes are printed here (dev only)')
   if (anyMailConfigured()) void verifyMail()
   console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] Razorpay not set — riders pay by UPI to the driver or cash')
-  console.log(`[ridesync] maps: ${env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · routes: ${env.orsKey ? 'OpenRouteService' : 'OSRM'}`)
+  const g = !!env.google.key
+  console.log(
+    `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
+  )
   if (env.devLogin) console.log('[ridesync] DEV_LOGIN enabled (local development only)')
 })

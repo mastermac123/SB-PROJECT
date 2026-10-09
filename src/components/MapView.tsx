@@ -1,8 +1,11 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { LatLng } from '@/lib/types'
 import { useConfig } from '@/services/api'
+import { googleMapsFailed, onGoogleMapsFailed } from './googleLoader'
+
+const GoogleMap = lazy(() => import('./GoogleMap'))
 
 export type MapMarker = {
   id: string
@@ -21,45 +24,35 @@ export type MapPadding = { top?: number; bottom?: number; left?: number; right?:
 const CAR_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 19 21 12 17 5 21Z" fill="currentColor"/></svg>'
 
-function iconFor(m: MapMarker) {
+/** Marker HTML shared by the Leaflet and Google maps (styled by .mk-* in components.css). */
+export function markerHtml(m: MapMarker): { html: string; size: number } {
   const label = m.label
     ? `<span class="mk-label${m.darkLabel ? ' mk-label--dark' : ''}">${escape(m.label)}${m.sublabel ? `<small>${escape(m.sublabel)}</small>` : ''}</span>`
     : ''
   if (m.kind === 'car') {
-    return L.divIcon({
-      className: 'mk',
+    return {
       html: `<div class="mk-car"><span class="mk-car__arrow" style="display:grid;transform:rotate(${m.heading ?? 0}deg);transition:transform 300ms">${CAR_SVG}</span></div>${label}`,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-    })
+      size: 36,
+    }
   }
   const cls = m.kind === 'pickup' ? 'mk-pin' : m.kind === 'drop' ? 'mk-drop' : 'mk-me'
-  return L.divIcon({ className: 'mk', html: `<div class="${cls}"></div>${label}`, iconSize: [18, 18], iconAnchor: [9, 9] })
+  return { html: `<div class="${cls}"></div>${label}`, size: 18 }
+}
+
+function iconFor(m: MapMarker) {
+  const { html, size } = markerHtml(m)
+  return L.divIcon({ className: 'mk', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
 }
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
-const ROUTE_STYLE = {
+export const ROUTE_STYLE = {
   primary: { casing: { color: '#ffffff', weight: 9, opacity: 1 }, line: { color: '#5038e6', weight: 5, opacity: 1 } },
   alt: { casing: { color: '#ffffff', weight: 7, opacity: 0.9 }, line: { color: '#a99ef2', weight: 4, opacity: 0.9 } },
   muted: { casing: { color: '#ffffff', weight: 7, opacity: 0.9 }, line: { color: '#9aa0b8', weight: 4, opacity: 0.9, dashArray: '2 8' } },
 }
 
-/**
- * Map surface. Leaflet + CARTO Positron tiles (OpenStreetMap data), styled to
- * stay quiet behind RideSync's UI. Missing tiles fall back to a neutral grid.
- */
-export function MapView({
-  markers = [],
-  routes = [],
-  fit,
-  padding,
-  center = { lat: 12.93, lng: 80.19 },
-  zoom = 12,
-  interactive = true,
-  animateRoutes = true,
-  follow,
-}: {
+export type MapViewProps = {
   markers?: MapMarker[]
   routes?: MapRoute[]
   fit?: LatLng[]
@@ -70,7 +63,48 @@ export function MapView({
   animateRoutes?: boolean
   /** Keep this marker id in view as it moves. */
   follow?: string
-}) {
+}
+
+/**
+ * Map surface. Google Maps when the server has a Google key, otherwise Leaflet with
+ * OpenStreetMap tiles. If Google fails to load (bad key, quota), it switches to Leaflet.
+ */
+export function MapView(props: MapViewProps) {
+  const config = useConfig().data
+  const [failed, setFailed] = useState(googleMapsFailed)
+  useEffect(() => onGoogleMapsFailed(() => setFailed(true)), [])
+  const google = config?.maps?.google
+  if (!config) return <MapShell />
+  if (google && !failed) {
+    return (
+      <Suspense fallback={<MapShell />}>
+        <GoogleMap {...props} browserKey={google.browserKey} />
+      </Suspense>
+    )
+  }
+  return <LeafletMap {...props} />
+}
+
+function MapShell() {
+  return (
+    <div className="map">
+      <div className="map__fallback" aria-hidden />
+    </div>
+  )
+}
+
+/** Leaflet + CARTO/MapTiler tiles (OpenStreetMap data). Missing tiles fall back to a neutral grid. */
+function LeafletMap({
+  markers = [],
+  routes = [],
+  fit,
+  padding,
+  center = { lat: 12.93, lng: 80.19 },
+  zoom = 12,
+  interactive = true,
+  animateRoutes = true,
+  follow,
+}: MapViewProps) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const routeLayer = useRef<L.LayerGroup | null>(null)

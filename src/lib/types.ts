@@ -9,6 +9,8 @@ export type Place = {
   lat: number
   lng: number
   kind?: 'campus' | 'station' | 'airport' | 'area' | 'custom'
+  /** Google search suggestion: coordinates are filled in when it's picked. */
+  googlePlaceId?: string
 }
 
 export type CommuteMode = 'driver' | 'rider' | 'both'

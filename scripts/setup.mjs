@@ -115,8 +115,34 @@ if (await yes('Set up Razorpay online payments?')) {
   }
 }
 
+/* ---- Google Maps ------------------------------------------------------------ */
+if (await yes('Set up Google Maps (map, place search and routes)?')) {
+  console.log('\n  console.cloud.google.com → new project → turn on billing → enable: Maps JavaScript API, Places API (New),\n  Geocoding API, Routes API → APIs & Services → Credentials → Create credentials → API key.\n')
+  const key = (await ask('Google Maps API key (starts with AIza)', env.get('GOOGLE_MAPS_API_KEY'))).trim()
+  if (key) {
+    env.set('GOOGLE_MAPS_API_KEY', key)
+    save()
+    const H = { 'X-Goog-Api-Key': key, 'Content-Type': 'application/json' }
+    const checks = [
+      ['Geocoding API', () => fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=19.0222,72.8711&key=${encodeURIComponent(key)}`).then(async (r) => { const j = await r.json(); return j.status === 'OK' || j.status === 'ZERO_RESULTS' ? '' : j.error_message || j.status })],
+      ['Places API (New)', () => fetch('https://places.googleapis.com/v1/places:autocomplete', { method: 'POST', headers: H, body: JSON.stringify({ input: 'Dadar', includedRegionCodes: ['in'] }) }).then(async (r) => (r.ok ? '' : (await r.json().catch(() => ({}))).error?.message || `HTTP ${r.status}`))],
+      ['Routes API', () => fetch('https://routes.googleapis.com/directions/v2:computeRoutes', { method: 'POST', headers: { ...H, 'X-Goog-FieldMask': 'routes.distanceMeters' }, body: JSON.stringify({ origin: { location: { latLng: { latitude: 19.0222, longitude: 72.8711 } } }, destination: { location: { latLng: { latitude: 19.0176, longitude: 72.8562 } } }, travelMode: 'DRIVE' }) }).then(async (r) => (r.ok ? '' : (await r.json().catch(() => ({}))).error?.message || `HTTP ${r.status}`))],
+    ]
+    for (const [name, run] of checks) {
+      process.stdout.write(`  Checking ${name}… `)
+      try {
+        const err = await run()
+        console.log(err ? `not working:\n    ${err}\n    → enable "${name}" in Google Cloud (APIs & Services → Library) and check billing is on.` : 'works ✓')
+      } catch {
+        console.log('couldn’t reach Google (check internet).')
+      }
+    }
+    console.log('  (The map itself — Maps JavaScript API — is checked when you open RideSync. If it fails, RideSync shows the free map instead.)\n')
+  }
+}
+
 /* ---- Maps ------------------------------------------------------------------ */
-if (await yes('Add map keys (MapTiler for maps & search, OpenRouteService for routes)?')) {
+if (await yes('Add free map keys instead (MapTiler for maps & search, OpenRouteService for routes)?')) {
   console.log('\n  MapTiler: cloud.maptiler.com → sign up free → Account → API keys.\n  OpenRouteService: openrouteservice.org → sign up free → Dashboard → Request a token.\n  Leave either empty to keep the free default.\n')
   const mt = await ask('MapTiler key', env.get('MAPTILER_KEY'))
   const ors = await ask('OpenRouteService key', env.get('ORS_API_KEY'))

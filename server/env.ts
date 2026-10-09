@@ -43,6 +43,17 @@ export const env = {
   orsKey: process.env.ORS_API_KEY || '',
   /** Optional: MapTiler key for map tiles + place search (free at maptiler.com). */
   maptilerKey: process.env.MAPTILER_KEY || '',
+  /**
+   * Optional: Google Maps Platform. One key turns on Google place search, place names
+   * and driving routes (server side) and the Google map (browser side).
+   */
+  google: {
+    key: process.env.GOOGLE_MAPS_API_KEY || '',
+    /** Separate key restricted to your website, for the map shown in the browser. Defaults to the key above. */
+    browserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_API_KEY || '',
+    /** Set to false to keep the free OpenStreetMap map while still using Google search and routes. */
+    display: process.env.GOOGLE_MAPS_DISPLAY ? bool(process.env.GOOGLE_MAPS_DISPLAY) : true,
+  },
   /** Optional: Razorpay payment gateway (test keys start with rzp_test_). */
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',

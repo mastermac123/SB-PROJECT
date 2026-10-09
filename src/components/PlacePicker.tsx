@@ -2,7 +2,7 @@ import { Building2, GraduationCap, LocateFixed, MapPin, Plane, Search, TrainFron
 import { useEffect, useRef, useState } from 'react'
 import { searchPlaces } from '@/data/places'
 import type { Place } from '@/lib/types'
-import { ApiError, requestLocation, searchPlacesRemote } from '@/services/api'
+import { ApiError, requestLocation, resolvePlaceRemote, searchPlacesRemote } from '@/services/api'
 import { ModalSheet } from './Sheet'
 import { Field, IconButton, ListRow, Notice } from './ui'
 
@@ -29,13 +29,20 @@ export function PlacePicker({
   const [remote, setRemote] = useState<Place[]>([])
   const [locating, setLocating] = useState(false)
   const [locError, setLocError] = useState<string | null>(null)
+  const [resolving, setResolving] = useState<string | null>(null)
+  const [pickError, setPickError] = useState<string | null>(null)
   const timer = useRef<number>(undefined)
+  // One Google autocomplete session per search: typing + the final pick are billed as one lookup.
+  const session = useRef<string>(newSession())
 
   useEffect(() => {
     if (!open) {
       setQ('')
       setRemote([])
       setLocError(null)
+      setPickError(null)
+      setResolving(null)
+      session.current = newSession()
     }
   }, [open])
 
@@ -45,7 +52,7 @@ export function PlacePicker({
     const ctrl = new AbortController()
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
-      searchPlacesRemote(q)
+      searchPlacesRemote(q, session.current)
         .then((r) => !ctrl.signal.aborted && setRemote(r))
         .catch(() => {})
     }, 450)
@@ -71,8 +78,20 @@ export function PlacePicker({
     }
   }
 
-  const pick = (p: Place) => {
-    onPick(p)
+  const pick = async (p: Place) => {
+    if (!p.googlePlaceId) return onPick(p)
+    if (resolving) return
+    setResolving(p.id)
+    setPickError(null)
+    try {
+      const full = await resolvePlaceRemote(p.googlePlaceId, session.current)
+      session.current = newSession()
+      onPick({ ...full, name: p.name || full.name, area: p.area || full.area })
+    } catch (e) {
+      setPickError(e instanceof ApiError ? e.message : 'Couldn’t load that place. Try again.')
+    } finally {
+      setResolving(null)
+    }
   }
 
   return (
@@ -113,7 +132,7 @@ export function PlacePicker({
             </>
           )}
           {local.map((p) => (
-            <ListRow key={p.id} icon={KIND_ICON[p.kind ?? 'area']} title={p.name} subtitle={p.area} onClick={() => pick(p)} chevron={false} />
+            <ListRow key={p.id} icon={KIND_ICON[p.kind ?? 'area']} title={p.name} subtitle={p.area} onClick={() => void pick(p)} chevron={false} />
           ))}
           {extra.length > 0 && (
             <>
@@ -121,8 +140,22 @@ export function PlacePicker({
                 More places
               </div>
               {extra.map((p) => (
-                <ListRow key={p.id} icon={<MapPin />} title={p.name} subtitle={p.area} onClick={() => pick(p)} chevron={false} />
+                <ListRow
+                  key={p.id}
+                  icon={<MapPin />}
+                  title={p.name}
+                  subtitle={resolving === p.id ? 'Loading…' : p.area}
+                  onClick={() => void pick(p)}
+                  chevron={false}
+                />
               ))}
+              {pickError && (
+                <div style={{ paddingTop: 8 }}>
+                  <Notice tone="warning" icon={<MapPin />}>
+                    {pickError}
+                  </Notice>
+                </div>
+              )}
             </>
           )}
           {q && local.length === 0 && extra.length === 0 && (
@@ -134,4 +167,12 @@ export function PlacePicker({
       </div>
     </ModalSheet>
   )
+}
+
+function newSession() {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  }
 }

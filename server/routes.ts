@@ -38,7 +38,7 @@ import {
   vehicleFor,
 } from './logic'
 import { getRoute } from './routing'
-import { mapsConfig, reverseGeocode, searchPlaces } from './maps'
+import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart } from './microsoft'
 import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
 import { createOrder, refundPayment, verifyPaymentSignature, verifyWebhookSignature } from './razorpay'
@@ -296,6 +296,9 @@ api.get('/events', requireUser, (req, res) => {
 /* ---- Places ---------------------------------------------------------------- */
 
 const placeHits = new Map<string, { n: number; since: number }>()
+/** Autocomplete session token from the client (a UUID), or undefined. */
+const sessionToken = (v: unknown) => (typeof v === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(v) ? v : undefined)
+
 function placeRateLimit(userId: string) {
   const now = Date.now()
   const h = placeHits.get(userId)
@@ -311,7 +314,23 @@ api.get(
     const q = String(req.query.q ?? '').trim()
     if (q.length < 3 || q.length > 100) return []
     placeRateLimit(meId(req))
-    return searchPlaces(q)
+    return searchPlaces(q, sessionToken(req.query.s))
+  }),
+)
+
+api.get(
+  '/places/resolve',
+  requireUser,
+  h(async (req) => {
+    const id = String(req.query.id ?? '')
+    if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) throw new HttpError(400, 'Invalid place')
+    placeRateLimit(meId(req))
+    try {
+      return await resolvePlace(id, sessionToken(req.query.s))
+    } catch (e) {
+      console.error('[ridesync] place details failed', (e as Error).message)
+      throw new HttpError(502, 'Couldn’t load that place. Try again or pick another.')
+    }
   }),
 )
 

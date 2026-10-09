@@ -1,8 +1,9 @@
 import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '../src/lib/geo'
 import type { LatLng } from '../src/lib/types'
 import { env } from './env'
+import { googleConfigured, googleRoute } from './google'
 
-export type Route = { coords: LatLng[]; distanceKm: number; durationMin: number; source: 'osrm' | 'estimate' }
+export type Route = { coords: LatLng[]; distanceKm: number; durationMin: number; source: 'google' | 'osrm' | 'estimate' }
 
 const cache = new Map<string, Route>()
 const key = (a: LatLng, b: LatLng) => `${a.lat.toFixed(4)},${a.lng.toFixed(4)}|${b.lat.toFixed(4)},${b.lng.toFixed(4)}`
@@ -49,6 +50,17 @@ export async function getRoute(a: LatLng, b: LatLng): Promise<Route> {
   const k = key(a, b)
   const hit = cache.get(k)
   if (hit) return hit
+  if (googleConfigured()) {
+    try {
+      const r = await googleRoute(a, b)
+      const route: Route = { ...r, coords: simplify(r.coords), source: 'google' }
+      if (cache.size > 500) cache.clear()
+      cache.set(k, route)
+      return route
+    } catch (e) {
+      console.error('[ridesync] Google routes failed, falling back', (e as Error).message)
+    }
+  }
   if (env.orsKey) {
     try {
       const route = await orsRoute(a, b)

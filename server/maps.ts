@@ -1,16 +1,21 @@
 import type { Place } from '../src/lib/types'
 import { CAMPUS } from '../src/data/places'
 import { env } from './env'
+import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
 
 /**
  * Map services. Everything works without keys (OpenStreetMap / CARTO / OSRM);
  * add free keys for production-grade reliability:
  *   MAPTILER_KEY  → map tiles + place search   (maptiler.com, free tier)
  *   ORS_API_KEY   → driving routes             (openrouteservice.org, free tier)
+ *   GOOGLE_MAPS_API_KEY → Google map, search, place names and routes (takes priority)
+ * If Google fails (quota, bad key), the free services are used instead.
  */
 
 export function mapsConfig() {
+  const google = googleConfigured()
   return {
+    google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
     tiles: env.maptilerKey
       ? {
           url: `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}{r}.png?key=${env.maptilerKey}`,
@@ -20,8 +25,8 @@ export function mapsConfig() {
           url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
         },
-    search: env.maptilerKey ? 'maptiler' : 'openstreetmap',
-    routing: env.orsKey ? 'openrouteservice' : 'osrm',
+    search: google ? 'google' : env.maptilerKey ? 'maptiler' : 'openstreetmap',
+    routing: google ? 'google' : env.orsKey ? 'openrouteservice' : 'osrm',
   }
 }
 
@@ -53,11 +58,20 @@ const short = (full: string, name: string) =>
     .slice(0, 2)
     .join(', ')
 
-export async function searchPlaces(q: string): Promise<Place[]> {
+export async function searchPlaces(q: string, sessionToken?: string): Promise<Place[]> {
   const key = q.trim().toLowerCase()
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < 3600_000) return hit.places
   let places: Place[] = []
+  if (googleConfigured()) {
+    try {
+      places = await googleAutocomplete(q, sessionToken)
+      cache.set(key, { at: Date.now(), places })
+      return places
+    } catch (e) {
+      console.error('[ridesync] Google place search failed, using OpenStreetMap', (e as Error).message)
+    }
+  }
   try {
     if (env.maptilerKey) {
       const data = await getJson<{ features: MTFeature[] }>(
@@ -80,8 +94,21 @@ export async function searchPlaces(q: string): Promise<Place[]> {
   return places
 }
 
+/** Coordinates for a Google suggestion the student picked. */
+export async function resolvePlace(placeId: string, sessionToken?: string): Promise<Place> {
+  return googlePlaceDetails(placeId, sessionToken)
+}
+
 /** Human-readable name for coordinates ("Current location" → "Near Dadar TT Circle"). */
 export async function reverseGeocode(lat: number, lng: number): Promise<{ name: string; area: string } | null> {
+  if (googleConfigured()) {
+    try {
+      const r = await googleReverse(lat, lng)
+      if (r) return r
+    } catch (e) {
+      console.error('[ridesync] Google place name failed, using OpenStreetMap', (e as Error).message)
+    }
+  }
   try {
     if (env.maptilerKey) {
       const data = await getJson<{ features: MTFeature[] }>(`https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${env.maptilerKey}&limit=1&language=en`)

@@ -245,7 +245,13 @@ export type AppConfig = {
   codesInTerminal: boolean
   devLogin: boolean
   razorpayKeyId: string | null
-  maps: { tiles: { url: string; attribution: string }; search: 'maptiler' | 'openstreetmap'; routing: 'openrouteservice' | 'osrm' }
+  maps: {
+    tiles: { url: string; attribution: string }
+    /** Set when the server has a Google Maps key and the Google map is turned on. */
+    google: { browserKey: string } | null
+    search: 'google' | 'maptiler' | 'openstreetmap'
+    routing: 'google' | 'openrouteservice' | 'osrm'
+  }
 }
 
 export function useConfig() {
@@ -332,9 +338,13 @@ export async function deleteAccount() {
 
 export type SearchResponse = { results: MatchResult[]; ridesInWindow: number }
 export type FeedItem = { ride: Ride; driver: PublicUser; vehicle: Vehicle }
-export type RouteInfo = { coords: { lat: number; lng: number }[]; distanceKm: number; durationMin: number; source: 'osrm' | 'estimate' }
+export type RouteInfo = { coords: { lat: number; lng: number }[]; distanceKm: number; durationMin: number; source: 'google' | 'osrm' | 'estimate' }
 
-export const searchPlacesRemote = (q: string) => get<Place[]>(`/places?q=${encodeURIComponent(q)}`)
+export const searchPlacesRemote = (q: string, session?: string) =>
+  get<Place[]>(`/places?q=${encodeURIComponent(q)}${session ? `&s=${encodeURIComponent(session)}` : ''}`)
+/** Fill in the coordinates of a Google search suggestion. */
+export const resolvePlaceRemote = (placeId: string, session?: string) =>
+  get<Place>(`/places/resolve?id=${encodeURIComponent(placeId)}${session ? `&s=${encodeURIComponent(session)}` : ''}`)
 
 export type OnlineOrder = { keyId: string; orderId: string; amount: number; currency: string; description: string; prefill: { name: string; email: string; contact: string } }
 export const payOnline = {
