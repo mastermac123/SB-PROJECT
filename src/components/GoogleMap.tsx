@@ -91,6 +91,8 @@ export default function GoogleMap({
           styles: STYLES,
           backgroundColor: '#eef0f5',
         })
+        // Google's own live traffic colours (free with the map).
+        new g.TrafficLayer().setMap(map.current)
         setReady(true)
       })
       .catch(() => {

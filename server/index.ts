@@ -1,6 +1,7 @@
 import { createApp, env } from './app'
 import { verifyMail } from './mail'
 import { checkMapTiler } from './maps'
+import { checkTomTom } from './traffic'
 import { razorpayConfigured } from './env'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
@@ -22,9 +23,14 @@ app.listen(env.port, () => {
     if (r === 'rejected') console.log('[ridesync] ⚠ MapTiler rejected the key in .env (MAPTILER_KEY) — using the free OpenStreetMap map instead. Copy the key again from cloud.maptiler.com → API keys and run setup.bat.')
     if (r === 'ok') console.log('[ridesync] MapTiler key works ✓')
   })
+  void checkTomTom().then((r) => {
+    if (r === 'ok') console.log('[ridesync] Live traffic (TomTom) works ✓')
+    if (r === 'rejected') console.log('[ridesync] ⚠ TomTom rejected TOMTOM_KEY — routes use OSRM without live traffic. Copy the key again from developer.tomtom.com and run setup.bat.')
+    if (r === 'none') console.log('[ridesync] Live traffic off — add a free TomTom key with setup.bat (see README "Live traffic")')
+  })
   const g = !!env.google.key
   console.log(
-    `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
+    `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
   )
   if (env.devLogin) console.log('[ridesync] DEV_LOGIN enabled (local development only)')
 })

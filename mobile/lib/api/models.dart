@@ -458,11 +458,28 @@ class RouteInfo {
   final double distanceKm;
   final int durationMin;
   final String source;
+
+  /// Extra minutes caused by traffic right now, and 'light' / 'moderate' / 'heavy' (live traffic only).
+  final int trafficDelayMin;
+  final String? traffic;
   RouteInfo.fromJson(Map<String, dynamic> j)
       : coords = _maps(j['coords']).map(LatLngPoint.fromJson).toList(),
         distanceKm = _d(j['distanceKm']),
         durationMin = _i(j['durationMin']),
-        source = _s(j['source']);
+        source = _s(j['source']),
+        trafficDelayMin = _i(j['trafficDelayMin']),
+        traffic = _ns(j['traffic']);
+}
+
+/// Driving time between two points from the server, with live traffic when available.
+class LiveEta {
+  final int durationMin;
+  final int trafficDelayMin;
+  final String? traffic;
+  LiveEta.fromJson(Map<String, dynamic> j)
+      : durationMin = _i(j['durationMin']),
+        trafficDelayMin = _i(j['trafficDelayMin']),
+        traffic = _ns(j['traffic']);
 }
 
 class AppConfig {
@@ -478,8 +495,12 @@ class AppConfig {
   /// Map tiles chosen by the server (MapTiler when it has a key, else CARTO/OpenStreetMap).
   final String? tileUrl;
   final String? tileAttribution;
+
+  /// Live traffic layer served by RideSync at /api/traffic/{z}/{x}/{y}.png
+  final bool traffic;
   AppConfig.fromJson(Map<String, dynamic> j)
       : microsoftLogin = j['microsoftLogin'] == true,
+        traffic = (j['maps'] as Map?)?['traffic'] == true,
         tileUrl = _ns(((j['maps'] as Map?)?['tiles'] as Map?)?['url']),
         tileAttribution = _ns(((j['maps'] as Map?)?['tiles'] as Map?)?['attribution']),
         razorpayKeyId = _ns(j['razorpayKeyId']),

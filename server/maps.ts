@@ -2,6 +2,7 @@ import type { Place } from '../src/lib/types'
 import { CAMPUS } from '../src/data/places'
 import { env } from './env'
 import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
+import { tomtomConfigured } from './traffic'
 
 /**
  * Map services. Everything works without keys (OpenStreetMap / CARTO / OSRM);
@@ -48,7 +49,9 @@ export function mapsConfig() {
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
         },
     search: google ? 'google' : maptiler() ? 'maptiler' : 'openstreetmap',
-    routing: google ? 'google' : env.orsKey ? 'openrouteservice' : 'osrm',
+    routing: google ? 'google' : tomtomConfigured() ? 'tomtom' : env.orsKey ? 'openrouteservice' : 'osrm',
+    /** Live traffic layer: tiles come from /api/traffic/{z}/{x}/{y}.png */
+    traffic: tomtomConfigured(),
   }
 }
 

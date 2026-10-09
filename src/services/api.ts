@@ -261,7 +261,9 @@ export type AppConfig = {
     /** Set when the server has a Google Maps key and the Google map is turned on. */
     google: { browserKey: string } | null
     search: 'google' | 'maptiler' | 'openstreetmap'
-    routing: 'google' | 'openrouteservice' | 'osrm'
+    routing: 'google' | 'tomtom' | 'openrouteservice' | 'osrm'
+    /** Live traffic layer available at /api/traffic/{z}/{x}/{y}.png */
+    traffic?: boolean
   }
 }
 
@@ -349,7 +351,20 @@ export async function deleteAccount() {
 
 export type SearchResponse = { results: MatchResult[]; ridesInWindow: number }
 export type FeedItem = { ride: Ride; driver: PublicUser; vehicle: Vehicle }
-export type RouteInfo = { coords: { lat: number; lng: number }[]; distanceKm: number; durationMin: number; source: 'google' | 'osrm' | 'estimate' }
+export type TrafficLevel = 'light' | 'moderate' | 'heavy'
+export type RouteInfo = {
+  coords: { lat: number; lng: number }[]
+  distanceKm: number
+  durationMin: number
+  source: 'google' | 'tomtom' | 'osrm' | 'estimate'
+  /** Extra minutes caused by traffic right now (live traffic only). */
+  trafficDelayMin?: number
+  traffic?: TrafficLevel
+}
+export type LiveEta = { durationMin: number; distanceKm: number; trafficDelayMin: number; traffic: TrafficLevel | null; source: RouteInfo['source'] }
+/** Driving time between two points, including live traffic when the server has it. */
+export const liveEta = (from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
+  get<LiveEta>(`/eta?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}`)
 
 export const searchPlacesRemote = (q: string, session?: string) =>
   get<Place[]>(`/places?q=${encodeURIComponent(q)}${session ? `&s=${encodeURIComponent(session)}` : ''}`)

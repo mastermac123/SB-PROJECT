@@ -189,5 +189,26 @@ if (await yes('Add free map keys instead (MapTiler for maps & search, OpenRouteS
   save()
 }
 
+/* ---- Live traffic ------------------------------------------------------------ */
+if (await yes('Add live traffic (free TomTom key — real traffic in ETAs, routes and on the map)?')) {
+  console.log('\n  developer.tomtom.com → Register (free, no card) → Dashboard → Keys → copy the default key ("My first API key").\n')
+  const tt = (await ask('TomTom API key', env.get('TOMTOM_KEY'))).trim()
+  if (tt) {
+    env.set('TOMTOM_KEY', tt)
+    save()
+    process.stdout.write('  Checking key… ')
+    try {
+      const r = await fetch(`https://api.tomtom.com/routing/1/calculateRoute/19.0222,72.8711:19.0176,72.8562/json?key=${encodeURIComponent(tt)}&traffic=true`)
+      if (r.ok) {
+        const j = await r.json()
+        const s = j.routes?.[0]?.summary
+        console.log(s ? `works ✓ (VIT → Dadar right now: ${Math.round(s.travelTimeInSeconds / 60)} min, ${Math.round((s.trafficDelayInSeconds ?? 0) / 60)} min of it traffic)\n` : 'works ✓\n')
+      } else console.log(`TomTom said ${r.status} — copy the key again from developer.tomtom.com → Keys.\n`)
+    } catch {
+      console.log('couldn’t reach TomTom (check internet).\n')
+    }
+  }
+}
+
 console.log('  Saved to .env. Restart RideSync (close the black window, then start it again) to use the new settings.\n')
 rl.close()

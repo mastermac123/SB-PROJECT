@@ -135,7 +135,7 @@ class _FindTabState extends State<FindTab> {
             FadeSlideIn(
               child: Padding(
                 padding: const EdgeInsets.only(top: 8, left: 4),
-                child: Text('${km(_preview!.distanceKm)} · about ${minutes(_preview!.durationMin)} by car', style: const TextStyle(color: RS.ink500, fontSize: 13)),
+                child: Text('${km(_preview!.distanceKm)} · about ${minutes(_preview!.durationMin)} by car${trafficNote(_preview!)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
               ),
             ),
           const SizedBox(height: 12),

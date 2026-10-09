@@ -326,6 +326,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       zoomControlsEnabled: false,
       mapToolbarEnabled: false,
       compassEnabled: false,
+      trafficEnabled: true,
       rotateGesturesEnabled: false,
       tiltGesturesEnabled: false,
       scrollGesturesEnabled: widget.interactive,
@@ -384,6 +385,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     final pickup = widget.pins.where((p) => p.kind == 'pickup').firstOrNull;
     // MapTiler when the server has a key; free CARTO/OpenStreetMap otherwise.
     final cfg = context.select<Session, (String?, String?)>((s) => (s.config?.tileUrl, s.config?.tileAttribution));
+    final traffic = context.select<Session, String?>((s) => s.config?.traffic == true ? s.api.trafficTileUrl : null);
     const carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png';
     final tileUrl = _tilesFailed ? carto : (cfg.$1 ?? carto);
     final credit = (cfg.$2 ?? '© OpenStreetMap · CARTO').replaceAll(RegExp(r'<[^>]+>'), '');
@@ -409,6 +411,19 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
         ),
+        // Live traffic colours (green / orange / red), refreshed every 2 minutes.
+        if (traffic != null)
+          Opacity(
+            opacity: 0.85,
+            child: fm.TileLayer(
+              key: ValueKey(DateTime.now().millisecondsSinceEpoch ~/ 120000),
+              urlTemplate: traffic,
+              minZoom: 10,
+              maxNativeZoom: 18,
+              userAgentPackageName: 'com.ridesync.ridesync',
+              evictErrorTileStrategy: fm.EvictErrorTileStrategy.dispose,
+            ),
+          ),
         fm.PolylineLayer(polylines: [
           for (final r in widget.altRoutes) fm.Polyline(points: r.map((p) => ll.LatLng(p.lat, p.lng)).toList(), strokeWidth: 4, color: const Color(0xFFA99EF2)),
           if (route.length > 1) ...[

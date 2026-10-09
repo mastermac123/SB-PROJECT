@@ -2,10 +2,21 @@ import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '..
 import type { LatLng } from '../src/lib/types'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
+import { tomtomConfigured, tomtomRoute, type TrafficLevel } from './traffic'
 
-export type Route = { coords: LatLng[]; distanceKm: number; durationMin: number; source: 'google' | 'osrm' | 'estimate' }
+export type Route = {
+  coords: LatLng[]
+  distanceKm: number
+  durationMin: number
+  source: 'google' | 'tomtom' | 'osrm' | 'estimate'
+  /** Extra minutes caused by traffic right now (TomTom only). */
+  trafficDelayMin?: number
+  traffic?: TrafficLevel
+}
 
 const cache = new Map<string, Route>()
+// Traffic changes by the minute, so traffic-aware routes are only reused briefly.
+const liveCache = new Map<string, { at: number; route: Route }>()
 const key = (a: LatLng, b: LatLng) => `${a.lat.toFixed(4)},${a.lng.toFixed(4)}|${b.lat.toFixed(4)},${b.lng.toFixed(4)}`
 
 export function estimateRoute(a: LatLng, b: LatLng): Route {
@@ -46,8 +57,22 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
   }
 }
 
-export async function getRoute(a: LatLng, b: LatLng): Promise<Route> {
+export async function getRoute(a: LatLng, b: LatLng, opts: { departAt?: Date } = {}): Promise<Route> {
   const k = key(a, b)
+  if (tomtomConfigured() && !googleConfigured()) {
+    const lk = `${k}|${opts.departAt ? Math.round(opts.departAt.getTime() / 900_000) : 'now'}`
+    const live = liveCache.get(lk)
+    if (live && Date.now() - live.at < 120_000) return live.route
+    try {
+      const r = await tomtomRoute(a, b, opts.departAt)
+      const route: Route = { ...r, coords: simplify(r.coords), source: 'tomtom' }
+      if (liveCache.size > 500) liveCache.clear()
+      liveCache.set(lk, { at: Date.now(), route })
+      return route
+    } catch (e) {
+      console.error('[ridesync] TomTom traffic route failed, falling back', (e as Error).message)
+    }
+  }
   const hit = cache.get(k)
   if (hit) return hit
   if (googleConfigured()) {

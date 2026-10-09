@@ -1,3 +1,4 @@
+import '../api/models.dart';
 import 'package:intl/intl.dart';
 
 final _time = DateFormat('h:mm a');
@@ -75,3 +76,10 @@ int suggestFarePerSeat(double distanceKm, int seats, String fuel) {
 }
 
 int maxFareFor(int suggested) => ((suggested * 1.5) / 10).round() * 10;
+
+/// " · +8 min traffic" when the route has live traffic, else "".
+String trafficNote(RouteInfo r) => switch (r.traffic) {
+      'heavy' || 'moderate' => ' · +${r.trafficDelayMin} min traffic',
+      'light' => ' · light traffic',
+      _ => '',
+    };

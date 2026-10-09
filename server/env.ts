@@ -58,6 +58,8 @@ export const env = {
   orsKey: process.env.ORS_API_KEY || '',
   /** Optional: MapTiler key for map tiles + place search (free at maptiler.com). */
   maptilerKey: process.env.MAPTILER_KEY || '',
+  /** Optional: TomTom key for live traffic in routes, ETAs and the map (free at developer.tomtom.com). */
+  tomtomKey: (process.env.TOMTOM_KEY || '').trim(),
   /**
    * Optional: Google Maps Platform. One key turns on Google place search, place names
    * and driving routes (server side) and the Google map (browser side).

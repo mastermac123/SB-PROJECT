@@ -188,6 +188,23 @@ How RideSync saves on Google usage:
 
 The terminal shows which map services are active when RideSync starts.
 
+### Live traffic (free)
+
+Add a free **TomTom** key to get real traffic, like Ola/Uber:
+
+- **Live ETAs:** "Arriving in 7 min" counts current traffic and shows "Heavy traffic · +6 min · live".
+- **Traffic on the map:** green, orange and red roads on the website and in the app, refreshed every 2 minutes.
+- **Traffic-aware routes:** when a driver offers a ride, the trip time uses expected traffic for that departure time.
+
+How to get the key:
+
+1. Go to https://developer.tomtom.com, click **Register**, and sign up free (no card needed).
+2. Open **Dashboard → Keys** and copy the key.
+3. Run **setup.bat**, answer `y` to **live traffic**, and paste the key. It shows the current VIT → Dadar time to prove it works.
+4. Restart start.bat. You should see `Live traffic (TomTom) works ✓`.
+
+The free plan includes 2,500 route/ETA requests and 50,000 map tiles a day. RideSync reuses results for 2 minutes to stay within it. Without a key, routes use OSRM, which has no traffic.
+
 ## 3e. Android and iPhone apps (Flutter)
 
 The mobile app is a **Flutter** app written in **Dart**, in the `mobile/` folder. It talks to the same server as the website, so app and website users share the same accounts, rides, chats and live updates. It signs in with an email code and keeps its login securely on the phone.
@@ -334,7 +351,7 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 46 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
+npm test          # 49 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
 npm run typecheck
 ```
 

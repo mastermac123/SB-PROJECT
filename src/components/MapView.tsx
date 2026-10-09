@@ -115,6 +115,7 @@ function LeafletMap({
   const gliding = useRef(new Map<string, () => void>())
   const tileLayer = useRef<L.TileLayer | null>(null)
   const tiles = useConfig().data?.maps?.tiles
+  const traffic = useConfig().data?.maps?.traffic
 
   // Create map once
   useEffect(() => {
@@ -163,6 +164,19 @@ function LeafletMap({
       })
     tileLayer.current = layer
   }, [tileUrl, tileAttribution])
+
+  // Live traffic: green / orange / red road colours over the map (TomTom, via our server).
+  useEffect(() => {
+    const m = map.current
+    if (!m || !traffic) return
+    const layer = L.tileLayer('/api/traffic/{z}/{x}/{y}.png', { minZoom: 10, maxZoom: 19, maxNativeZoom: 18, opacity: 0.85, attribution: 'Traffic © TomTom', zIndex: 2 }).addTo(m)
+    // Refresh every 2 minutes so the colours follow real traffic.
+    const t = window.setInterval(() => layer.setUrl(`/api/traffic/{z}/{x}/{y}.png?t=${Math.floor(Date.now() / 120_000)}`), 120_000)
+    return () => {
+      window.clearInterval(t)
+      layer.remove()
+    }
+  }, [traffic])
 
   // Routes
   const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}`).join('|')

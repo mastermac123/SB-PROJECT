@@ -160,7 +160,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                   Row(children: [
                     Text(money(_effectiveFare), style: RS.heading(28, color: RS.primary)),
                     const Spacer(),
-                    Text('${km(_route!.distanceKm)} · ${minutes(_route!.durationMin)}', style: const TextStyle(color: RS.ink500)),
+                    Text('${km(_route!.distanceKm)} · ${minutes(_route!.durationMin)}${trafficNote(_route!)}', style: const TextStyle(color: RS.ink500)),
                   ]),
                   Slider(
                     value: _effectiveFare.toDouble().clamp(0, maxFare.toDouble()),

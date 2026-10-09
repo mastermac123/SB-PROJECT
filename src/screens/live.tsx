@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { MessageCircle, Phone, Share2, ShieldAlert, Siren, Star } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { MapView, type MapMarker } from '@/components/MapView'
 import { ModalSheet } from '@/components/Sheet'
@@ -13,7 +13,7 @@ import { haversineKm, projectOnPolyline } from '@/lib/geo'
 import { firstName, money, relative } from '@/lib/format'
 import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { ApiError, Q, bookings, useDriverLocation, useMe, useQuery, type BookingDetail } from '@/services/api'
+import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
 import { shareLink } from './rideDetails'
 import { paymentLabel, SuccessMark } from './trip'
 
@@ -22,6 +22,33 @@ const CAMPUS_SECURITY = import.meta.env.VITE_CAMPUS_SECURITY_PHONE as string | u
 const RATING_TAGS = ['On time', 'Safe driving', 'Friendly', 'Clean car', 'Easy pickup', 'Good music']
 
 const etaMin = (from: LatLng, to: LatLng) => Math.max(1, Math.round(((haversineKm(from, to) * 1.35) / 22) * 60))
+
+/**
+ * Traffic-aware ETA from the server, refreshed when the car has moved ~300 m or every 90 s.
+ * Until it arrives (or if routing is down) a straight-line estimate is used.
+ */
+function useLiveEta(from: LatLng | null, to: LatLng | null) {
+  const [eta, setEta] = useState<(LiveEta & { from: LatLng; at: number; to: LatLng }) | null>(null)
+  const busy = useRef(false)
+  const now = Date.now()
+  const fresh = eta && to && eta.to.lat === to.lat && eta.to.lng === to.lng
+  const due = !!from && !!to && (!fresh || haversineKm(eta.from, from) > 0.3 || now - eta.at > 90_000)
+  useEffect(() => {
+    if (!due || !from || !to || busy.current) return
+    busy.current = true
+    liveEta(from, to)
+      .then((r) => setEta({ ...r, from, to, at: Date.now() }))
+      .catch(() => {})
+      .finally(() => {
+        busy.current = false
+      })
+  }, [due, from, to])
+  if (!from || !to) return null
+  if (!fresh) return { minutes: etaMin(from, to), traffic: null as LiveEta['traffic'], delay: 0 }
+  // Subtract the distance covered since the last check so the number keeps ticking down.
+  const covered = Math.round(((haversineKm(eta.from, from) * 1.2) / 22) * 60)
+  return { minutes: Math.max(1, eta.durationMin - covered), traffic: eta.traffic, delay: eta.trafficDelayMin }
+}
 
 export function LiveRide() {
   const { bookingId } = useParams()
@@ -34,6 +61,8 @@ export function LiveRide() {
   const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
   const loc = useDriverLocation(q.data?.ride.id, q.data?.ride.driverLocation)
   useNow(15_000)
+  const live = q.data && ['driver_arriving', 'in_progress'].includes(q.data.booking.status) ? (q.data.booking.status === 'in_progress' ? q.data.booking.drop : q.data.booking.pickup) : null
+  const etaInfo = useLiveEta(loc ?? null, live)
 
   if (q.loading)
     return (
@@ -52,7 +81,7 @@ export function LiveRide() {
 
   const name = firstName(driver.name)
   const target = booking.status === 'in_progress' ? booking.drop : booking.pickup
-  const eta = loc ? etaMin(loc, target) : null
+  const eta = etaInfo?.minutes ?? null
   const stale = loc ? Date.now() - new Date(loc.at).getTime() > 2 * 60_000 : false
 
   let progress = 0
@@ -108,6 +137,11 @@ export function LiveRide() {
               {headline.title}
             </h1>
             <p className="t-body t-muted">{headline.sub}</p>
+            {eta && etaInfo?.traffic && booking.status !== 'driver_arrived' && (
+              <p className="t-sm" style={{ color: etaInfo.traffic === 'heavy' ? 'var(--error-600)' : etaInfo.traffic === 'moderate' ? 'var(--warning-600)' : 'var(--success-600)' }}>
+                {etaInfo.traffic === 'light' ? 'Light traffic · live' : `${etaInfo.traffic === 'heavy' ? 'Heavy' : 'Some'} traffic · +${etaInfo.delay} min · live`}
+              </p>
+            )}
             {stale && loc && <p className="t-sm" style={{ color: 'var(--warning-600)' }}>Location last updated {relative(loc.at).toLowerCase()}</p>}
           </motion.div>
         </AnimatePresence>

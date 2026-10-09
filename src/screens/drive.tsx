@@ -146,6 +146,7 @@ export function OfferRide() {
           <p className="t-sm t-muted row gap-2" style={{ marginTop: -12 }}>
             <Info size={15} />
             {Math.round(route.distanceKm)} km · about {duration(route.durationMin)}
+            {route.traffic && route.traffic !== 'light' ? ` · +${route.trafficDelayMin} min traffic` : route.traffic ? ' · light traffic' : ''}
             {route.source === 'estimate' && ' (estimated)'}
           </p>
         )}

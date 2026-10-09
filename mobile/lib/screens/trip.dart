@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -209,6 +210,21 @@ class _TripScreenState extends State<TripScreen> {
   StreamSubscription<(String, DriverLocation)>? _loc;
   String? _rideId;
 
+  // Traffic-aware ETA from the server, refreshed when the car moves ~300 m or every 90 s.
+  ({LiveEta eta, LatLngPoint from, LatLngPoint to, DateTime at})? _eta;
+  bool _etaBusy = false;
+
+  void _refreshEta(LatLngPoint? from, LatLngPoint? to) {
+    if (from == null || to == null || _etaBusy) return;
+    final e = _eta;
+    final fresh = e != null && e.to.lat == to.lat && e.to.lng == to.lng && haversineKm(e.from, from) < 0.3 && DateTime.now().difference(e.at).inSeconds < 90;
+    if (fresh) return;
+    _etaBusy = true;
+    context.read<Session>().api.eta(from, to).then((r) {
+      if (mounted) setState(() => _eta = (eta: r, from: from, to: to, at: DateTime.now()));
+    }).catchError((_) {}).whenComplete(() => _etaBusy = false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -232,14 +248,28 @@ class _TripScreenState extends State<TripScreen> {
           _rideId = d.ride.id;
           return d;
         },
-        builder: (context, d, reload) => _TripView(detail: d, car: _car ?? d.ride.driverLocation),
+        builder: (context, d, reload) {
+          final car = _car ?? d.ride.driverLocation;
+          final from = car == null ? null : LatLngPoint(car.lat, car.lng);
+          final to = switch (d.booking.status) { 'driver_arriving' => d.booking.pickup.point, 'in_progress' => d.booking.drop.point, _ => null };
+          WidgetsBinding.instance.addPostFrameCallback((_) => _refreshEta(from, to));
+          final e = _eta;
+          final live = e != null && to != null && from != null && e.to.lat == to.lat && e.to.lng == to.lng ? e : null;
+          return _TripView(
+            detail: d,
+            car: car,
+            // Minus the distance already covered since the last check, so it keeps counting down.
+            liveEta: live == null ? null : (minutes: math.max(1, live.eta.durationMin - (haversineKm(live.from, from!) * 1.2 / 22 * 60).round()), traffic: live.eta.traffic, delay: live.eta.trafficDelayMin),
+          );
+        },
       );
 }
 
 class _TripView extends StatelessWidget {
-  const _TripView({required this.detail, required this.car});
+  const _TripView({required this.detail, required this.car, this.liveEta});
   final BookingDetail detail;
   final DriverLocation? car;
+  final ({int minutes, String? traffic, int delay})? liveEta;
 
   static const _steps = ['pending', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'];
 
@@ -255,10 +285,11 @@ class _TripView extends StatelessWidget {
     final eta = carPoint == null
         ? null
         : switch (b.status) {
-            'driver_arriving' => etaMinutes(carPoint, b.pickup.point),
-            'in_progress' => etaMinutes(carPoint, b.drop.point),
+            'driver_arriving' => liveEta?.minutes ?? etaMinutes(carPoint, b.pickup.point),
+            'in_progress' => liveEta?.minutes ?? etaMinutes(carPoint, b.drop.point),
             _ => null,
           };
+    final traffic = eta == null ? null : liveEta?.traffic;
 
     return MapSheetScaffold(
       initialSize: live ? 0.42 : 0.55,
@@ -288,6 +319,13 @@ class _TripView extends StatelessWidget {
                   Text(eta != null ? (b.status == 'driver_arriving' ? 'Arriving in $eta min' : '$eta min to ${b.drop.name}') : (bookingStatusLabel[b.status] ?? b.status), style: RS.heading(22)),
                   const SizedBox(height: 4),
                   Text(_subtitle(b, ride, detail), style: const TextStyle(color: RS.ink500, height: 1.4)),
+                  if (traffic != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      traffic == 'light' ? 'Light traffic · live' : '${traffic == 'heavy' ? 'Heavy' : 'Some'} traffic · +${liveEta!.delay} min · live',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: traffic == 'heavy' ? RS.danger : traffic == 'moderate' ? RS.warning : RS.success),
+                    ),
+                  ],
                 ]),
               ),
             ],

@@ -38,6 +38,7 @@ import {
   vehicleFor,
 } from './logic'
 import { getRoute } from './routing'
+import { tomtomConfigured, trafficTile } from './traffic'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
 import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
@@ -370,6 +371,33 @@ api.get(
 
 /* ---- Routing preview ------------------------------------------------------ */
 
+/** Live ETA between two points (driver → pickup, car → drop), traffic-aware when TomTom is set up. */
+api.get(
+  '/eta',
+  requireUser,
+  h(async (req) => {
+    const n = (v: unknown) => Number(String(v ?? ''))
+    const from = { lat: n(req.query.fromLat), lng: n(req.query.fromLng) }
+    const to = { lat: n(req.query.toLat), lng: n(req.query.toLng) }
+    if (![from.lat, from.lng, to.lat, to.lng].every(Number.isFinite)) throw new HttpError(400, 'Bad coordinates.')
+    const r = await getRoute(from, to)
+    return { durationMin: r.durationMin, distanceKm: Math.round(r.distanceKm * 10) / 10, trafficDelayMin: r.trafficDelayMin ?? 0, traffic: r.traffic ?? null, source: r.source }
+  }),
+)
+
+// Map tiles are loaded by <img>/tile layers without login headers, so this is public but cached.
+api.get('/traffic/:z/:x/:y.png', async (req, res) => {
+  const [z, x, y] = [req.params.z, req.params.x, req.params.y].map(Number)
+  if (!tomtomConfigured() || ![z, x, y].every(Number.isInteger) || z < 8 || z > 20) return res.status(404).end()
+  try {
+    const png = await trafficTile(z, x, y)
+    if (!png) return res.status(404).end()
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=120', 'Cross-Origin-Resource-Policy': 'cross-origin' }).send(png)
+  } catch {
+    res.status(502).end()
+  }
+})
+
 api.post(
   '/route',
   requireUser,
@@ -500,7 +528,7 @@ api.post(
     )
     if (clash) throw new HttpError(409, 'You already have a ride within an hour of this time.', 'time')
 
-    const route = await getRoute(p.origin, p.destination)
+    const route = await getRoute(p.origin, p.destination, { departAt: depart })
     const suggested = suggestFarePerSeat(route.distanceKm, p.seats, vehicle.fuel)
     const cap = Math.round((suggested * 1.5) / 10) * 10
     if (p.farePerSeat > cap) throw new HttpError(400, `RideSync is for cost-sharing — the maximum for this trip is ${money(cap)} per seat.`, 'fare')
