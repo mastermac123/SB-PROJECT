@@ -425,6 +425,34 @@ class PaymentRecord {
         at = _t(j['at']);
 }
 
+class WalletTx {
+  final String id;
+  final String kind;
+  final int amount;
+  final String note;
+  final String? bookingId;
+  final DateTime createdAt;
+  WalletTx.fromJson(Map<String, dynamic> j)
+      : id = _s(j['id']),
+        kind = _s(j['kind']),
+        amount = _i(j['amount']),
+        note = _s(j['note']),
+        bookingId = _ns(j['bookingId']),
+        createdAt = _t(j['createdAt']);
+}
+
+class WalletInfo {
+  final int balance;
+  final bool testMode;
+  final bool canTopUp;
+  final List<WalletTx> transactions;
+  WalletInfo.fromJson(Map<String, dynamic> j)
+      : balance = _i(j['balance']),
+        testMode = j['testMode'] == true,
+        canTopUp = j['canTopUp'] == true,
+        transactions = _maps(j['transactions']).map(WalletTx.fromJson).toList();
+}
+
 class RouteInfo {
   final List<LatLngPoint> coords;
   final double distanceKm;

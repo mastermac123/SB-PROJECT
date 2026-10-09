@@ -5,6 +5,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import '../util/checkout.dart';
 import '../util/format.dart';
 import '../util/validation.dart';
 import '../widgets/common.dart';
@@ -288,7 +289,7 @@ class PaymentsScreen extends StatelessWidget {
     'unpaid': ('Cash due', RS.warning, RS.warning50),
     'marked_paid': ('Paid · unconfirmed', RS.primary, RS.primary50),
     'received': ('Received', RS.success, RS.success50),
-    'paid_online': ('Paid online', RS.success, RS.success50),
+    'paid_online': ('Paid', RS.success, RS.success50),
     'refunded': ('Refunded', RS.ink700, RS.sunken),
   };
 
@@ -297,9 +298,10 @@ class PaymentsScreen extends StatelessWidget {
     final u = context.watch<Session>().user!;
     return Scaffold(
       appBar: AppBar(title: const Text('Wallet')),
-      body: LiveLoader<List<PaymentRecord>>(
-        load: (api) => api.payments(),
-        builder: (context, list, reload) {
+      body: LiveLoader<(List<PaymentRecord>, WalletInfo)>(
+        load: (api) async => (await api.payments(), await api.wallet()),
+        builder: (context, data, reload) {
+          final (list, wallet) = data;
           final now = DateTime.now();
           final month = list.where((p) => p.at.month == now.month && p.at.year == now.year);
           final spent = month.where((p) => p.direction == 'paid' && p.status != 'unpaid' && p.status != 'refunded').fold<int>(0, (s, p) => s + p.amount);
@@ -307,6 +309,33 @@ class PaymentsScreen extends StatelessWidget {
           final toCollect = list.where((p) => p.direction == 'received' && (p.status == 'unpaid' || p.status == 'marked_paid')).fold<int>(0, (s, p) => s + p.amount);
           final driver = u.commute != 'rider';
           return ListView(padding: const EdgeInsets.all(16), children: [
+            FadeSlideIn(child: _WalletCard(wallet: wallet, onChanged: reload)),
+            if (wallet.transactions.isNotEmpty) ...[
+              const SectionTitle('Wallet activity'),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (final (i, t) in wallet.transactions.take(20).indexed) ...[
+                    if (i > 0) const Divider(indent: 72),
+                    ListTile(
+                      onTap: t.bookingId == null ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: t.bookingId!))),
+                      leading: CircleAvatar(
+                        backgroundColor: t.amount > 0 ? RS.success50 : RS.primary50,
+                        child: Icon(
+                          switch (t.kind) { 'topup' => Icons.add, 'refund' => Icons.replay, _ => t.amount > 0 ? Icons.south_west_rounded : Icons.north_east_rounded },
+                          color: t.amount > 0 ? RS.success : RS.primary,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(t.note, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(ago(t.createdAt)),
+                      trailing: Text('${t.amount > 0 ? '+' : '−'}${money(t.amount.abs())}', style: TextStyle(fontWeight: FontWeight.w700, color: t.amount > 0 ? RS.success : RS.ink900)),
+                    ),
+                  ],
+                ]),
+              ),
+            ],
+            const SizedBox(height: 12),
             FadeSlideIn(
               child: Container(
                 padding: const EdgeInsets.all(20),
@@ -363,7 +392,7 @@ class PaymentsScreen extends StatelessWidget {
                         child: Icon(p.direction == 'received' ? Icons.south_west_rounded : Icons.north_east_rounded, color: p.direction == 'received' ? RS.success : RS.primary, size: 20),
                       ),
                       title: Text(p.direction == 'received' ? 'From ${p.counterparty}' : 'To ${p.counterparty}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text('${p.route} · ${switch (p.method) { 'upi' => 'UPI', 'online' => 'Online', _ => 'Cash' }} · ${ago(p.at)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('${p.route} · ${switch (p.method) { 'upi' => 'UPI', 'online' => 'Online', 'wallet' => 'Wallet', _ => 'Cash' }} · ${ago(p.at)}', maxLines: 1, overflow: TextOverflow.ellipsis),
                       trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Text('${p.direction == 'received' ? '+' : '−'}${money(p.amount)}', style: TextStyle(fontWeight: FontWeight.w700, color: p.direction == 'received' ? RS.success : RS.ink900)),
                         const SizedBox(height: 2),
@@ -374,12 +403,60 @@ class PaymentsScreen extends StatelessWidget {
                 ]),
               ),
             const SizedBox(height: 12),
-            const Text('Riders pay drivers directly by UPI or cash, or online when it’s turned on. Online payments for cancelled rides are refunded automatically.', style: TextStyle(color: RS.ink500, fontSize: 12.5)),
+            const Text('Riders pay from the RideSync Wallet, online through Razorpay, or directly to drivers by UPI or cash. Wallet and online payments for cancelled rides are refunded automatically.', style: TextStyle(color: RS.ink500, fontSize: 12.5)),
           ]);
         },
       ),
     );
   }
+}
+
+class _WalletCard extends StatelessWidget {
+  const _WalletCard({required this.wallet, required this.onChanged});
+  final WalletInfo wallet;
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(RS.radiusXl),
+          color: RS.ink900,
+          boxShadow: const [BoxShadow(color: Color(0x3315182E), blurRadius: 18, offset: Offset(0, 8))],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.account_balance_wallet, color: Colors.white70, size: 18),
+            const SizedBox(width: 6),
+            const Text('RideSync Wallet', style: TextStyle(color: Colors.white70)),
+            const Spacer(),
+            if (wallet.testMode) const Pill('TEST MODE', color: RS.ink900, background: Color(0xFFFFD166)),
+          ]),
+          const SizedBox(height: 6),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: wallet.balance.toDouble()),
+            duration: const Duration(milliseconds: 900),
+            curve: Curves.easeOutCubic,
+            builder: (_, v, _) => Text(money(v), style: RS.heading(34, color: Colors.white)),
+          ),
+          const SizedBox(height: 4),
+          const Text('Pay for rides in one tap · cancelled rides are refunded here instantly', style: TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: RS.ink900, minimumSize: const Size(0, 42)),
+            onPressed: wallet.canTopUp
+                ? () async {
+                    if (await addMoney(context, testMode: wallet.testMode) && context.mounted) {
+                      await showSuccess(context, 'Money added', subtitle: 'Your wallet is ready for your next ride.');
+                      await onChanged();
+                    }
+                  }
+                : () => toast(context, 'Adding money needs Razorpay keys on the server. Run setup and add your Razorpay test keys.'),
+            icon: const Icon(Icons.add),
+            label: const Text('Add money'),
+          ),
+        ]),
+      );
 }
 
 class PreferencesScreen extends StatefulWidget {

@@ -98,6 +98,10 @@ class _HomeShellState extends State<HomeShell> {
 /// Opens a server notification link like /trip/b_123 or /drive/r_456.
 void openLink(BuildContext context, String link) {
   final parts = link.split('?').first.split('/').where((p) => p.isNotEmpty).toList();
+  if (parts.length == 1 && parts[0] == 'wallet') {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PaymentsScreen()));
+    return;
+  }
   if (parts.length < 2) return;
   final id = parts[1];
   final page = switch (parts[0]) {

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CreditCard, Copy, ExternalLink, FlaskConical, Lock, Smartphone } from 'lucide-react'
+import { Banknote, CreditCard, Copy, ExternalLink, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -9,38 +9,18 @@ import { useToast } from '@/components/Toast'
 import { Button, Field, Notice, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop } from '@/hooks'
 import { firstName, money } from '@/lib/format'
-import { ApiError, Q, bookings, payOnline, useConfig, useQuery, type BookingDetail } from '@/services/api'
+import { openCheckout } from '@/lib/razorpay'
+import { ApiError, Q, bookings, payOnline, useConfig, useQuery, wallet, type BookingDetail, type WalletInfo } from '@/services/api'
 import { SuccessMark } from './trip'
 
 /**
- * Three ways to pay the cost-share:
+ * Ways to pay the cost-share:
+ *   wallet — RideSync Wallet balance (topped up through Razorpay); refunded to the wallet on cancellation
  *   online — Razorpay Checkout (UPI, cards, netbanking); verified on the server, auto-refunded on cancellation
  *   upi    — straight to the driver's UPI ID (deep link on phones, QR on desktop)
  *   cash   — at pickup
  */
 
-type RazorpayCtor = new (opts: Record<string, unknown>) => { open: () => void; on: (ev: string, fn: (r: { error?: { description?: string } }) => void) => void }
-declare global {
-  interface Window {
-    Razorpay?: RazorpayCtor
-  }
-}
-
-let checkoutJs: Promise<void> | null = null
-function loadCheckout() {
-  if (window.Razorpay) return Promise.resolve()
-  checkoutJs ??= new Promise<void>((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    s.onload = () => resolve()
-    s.onerror = () => {
-      checkoutJs = null
-      reject(new Error('Couldn’t load the payment window. Check your connection.'))
-    }
-    document.body.appendChild(s)
-  })
-  return checkoutJs
-}
 export function upiLink(pa: string, pn: string, amount: number, note: string) {
   const p = new URLSearchParams({ pa, pn, am: amount.toFixed(2), cu: 'INR', tn: note.slice(0, 60) })
   return `upi://pay?${p.toString().replace(/\+/g, '%20')}`
@@ -54,12 +34,13 @@ export function Payment() {
   const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
   const config = useConfig()
   const rzpKey = config.data?.razorpayKeyId ?? null
-  const [method, setMethod] = useState<'online' | 'upi' | 'cash' | null>(null)
+  const w = useQuery<WalletInfo>(Q.wallet)
+  const [method, setMethod] = useState<'wallet' | 'online' | 'upi' | 'cash' | null>(null)
   const [opened, setOpened] = useState(false)
   const [ref, setRef] = useState('')
   const [qr, setQr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState<'online' | 'upi' | 'cash' | null>(null)
+  const [done, setDone] = useState<'wallet' | 'online' | 'upi' | 'cash' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const d = q.data
@@ -67,8 +48,8 @@ export function Payment() {
 
   useEffect(() => {
     // Wait for the server config so "Pay online" is the default when the gateway is set up.
-    if (d && config.data && method === null) setMethod(rzpKey ? 'online' : d.driverUpiId ? 'upi' : 'cash')
-  }, [d, method, rzpKey, config.data])
+    if (d && config.data && method === null) setMethod((w.data?.balance ?? 0) >= d.booking.fare ? 'wallet' : rzpKey ? 'online' : d.driverUpiId ? 'upi' : 'cash')
+  }, [d, method, rzpKey, config.data, w.data])
   useEffect(() => {
     if (link && desktop) QRCode.toDataURL(link, { margin: 1, width: 240, color: { dark: '#15182E', light: '#FFFFFF' } }).then(setQr).catch(() => setQr(null))
   }, [link, desktop])
@@ -104,37 +85,36 @@ export function Payment() {
     setSaving(true)
     setError(null)
     try {
-      const order = await payOnline.createOrder(booking.id)
-      await loadCheckout()
-      const rzp = new window.Razorpay!({
-        key: order.keyId,
-        order_id: order.orderId,
-        amount: order.amount,
-        currency: order.currency,
-        name: 'RideSync AI',
-        description: order.description,
-        image: `${window.location.origin}/apple-touch-icon.png`,
-        prefill: order.prefill,
-        theme: { color: '#5038E6' },
-        handler: async (resp: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            await payOnline.verify(booking.id, resp)
-            setDone('online')
-          } catch (e) {
-            setError(e instanceof ApiError ? e.message : 'We couldn’t confirm the payment. If money was taken it will be refunded.')
-          } finally {
-            setSaving(false)
-          }
-        },
-        modal: { ondismiss: () => setSaving(false) },
-      })
-      rzp.on('payment.failed', (r) => {
-        setError(`Payment failed: ${r.error?.description ?? 'please try again'}. You haven’t been charged.`)
-        setSaving(false)
-      })
-      rzp.open()
+      const r = await openCheckout(await payOnline.createOrder(booking.id))
+      if (!r) return
+      await payOnline.verify(booking.id, r)
+      setDone('online')
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t start the payment.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const balance = w.data?.balance ?? 0
+  const shortfall = Math.max(0, booking.fare - balance)
+
+  /** Pays from the wallet; tops up just the missing amount through Razorpay first if needed. */
+  async function payWithWallet() {
+    setSaving(true)
+    setError(null)
+    try {
+      if (shortfall > 0) {
+        const r = await openCheckout(await wallet.topUpOrder(Math.max(10, Math.ceil(shortfall))))
+        if (!r) return
+        await wallet.verifyTopUp(r)
+      }
+      await wallet.payBooking(booking.id)
+      setDone('wallet')
+    } catch (e) {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t pay from your wallet.')
+      void w.reload()
+    } finally {
       setSaving(false)
     }
   }
@@ -147,7 +127,7 @@ export function Payment() {
             <SuccessMark />
             <h1 className="t-h1">Seat confirmed</h1>
             <p className="t-body t-muted">
-              {done === 'online' ? `${money(booking.fare)} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} ${money(booking.fare)} in cash at pickup.`}
+              {done === 'wallet' ? `${money(booking.fare)} paid from your RideSync Wallet. ${name} has been notified.` : done === 'online' ? `${money(booking.fare)} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} ${money(booking.fare)} in cash at pickup.`}
             </p>
           </div>
           <div className="stack gap-2" style={{ marginTop: 16 }}>
@@ -192,6 +172,15 @@ export function Payment() {
           </div>
 
           <div className="stack gap-2" role="radiogroup" aria-label="Payment method">
+            {(rzpKey || balance > 0) && (
+              <MethodOption
+                selected={method === 'wallet'}
+                onSelect={() => setMethod('wallet')}
+                logo={<WalletIcon />}
+                title="RideSync Wallet"
+                subtitle={shortfall > 0 ? `Balance ${money(balance)} · add ${money(shortfall)} to pay` : `Balance ${money(balance)} · instant · refunded to wallet if cancelled`}
+              />
+            )}
             {rzpKey && (
               <MethodOption
                 selected={method === 'online'}
@@ -201,7 +190,7 @@ export function Payment() {
                 subtitle="UPI, cards, netbanking · secured by Razorpay · auto-refund if cancelled"
               />
             )}
-            {rzpKey?.startsWith('rzp_test_') && method === 'online' && (
+            {rzpKey?.startsWith('rzp_test_') && (method === 'online' || (method === 'wallet' && shortfall > 0)) && (
               <Notice tone="warning" icon={<FlaskConical />} title="Razorpay test mode">
                 No real money moves. Use UPI ID <strong>success@razorpay</strong> or card <strong>4111 1111 1111 1111</strong> (any future expiry, any CVV).
               </Notice>
@@ -261,7 +250,11 @@ export function Payment() {
         </div>
       </div>
       <div className="page__footer page__footer--narrow">
-        {method === 'online' ? (
+        {method === 'wallet' ? (
+          <Button size="lg" block icon={<WalletIcon />} loading={saving} disabled={shortfall > 0 && !rzpKey} onClick={payWithWallet}>
+            {shortfall > 0 ? `Add ${money(Math.max(10, Math.ceil(shortfall)))} & pay` : `Pay ${money(booking.fare)} from wallet`}
+          </Button>
+        ) : method === 'online' ? (
           <Button size="lg" block icon={<Lock />} loading={saving} onClick={payWithGateway}>
             Pay {money(booking.fare)}
           </Button>

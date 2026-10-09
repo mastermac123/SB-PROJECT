@@ -1,16 +1,20 @@
-import { ArrowDownLeft, ArrowUpRight, AtSign, ReceiptText } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, AtSign, FlaskConical, Plus, ReceiptText, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { NetworkError, StateView } from '@/components/States'
-import { Badge, Button, RideCardSkeleton } from '@/components/ui'
+import { ModalSheet } from '@/components/Sheet'
+import { useToast } from '@/components/Toast'
+import { Badge, Button, Chip, Field, Notice, RideCardSkeleton } from '@/components/ui'
+import { openCheckout } from '@/lib/razorpay'
 import { money, relative } from '@/lib/format'
 import { Page } from '@/layouts/Page'
-import { Q, useMe, useQuery, type PaymentRecord } from '@/services/api'
+import { ApiError, Q, useMe, useQuery, wallet, type PaymentRecord, type WalletInfo } from '@/services/api'
 
 const STATUS: Record<PaymentRecord['status'], { label: string; tone?: 'success' | 'warning' }> = {
   unpaid: { label: 'Cash due', tone: 'warning' },
   marked_paid: { label: 'Paid · unconfirmed' },
   received: { label: 'Received', tone: 'success' },
-  paid_online: { label: 'Paid online', tone: 'success' },
+  paid_online: { label: 'Paid', tone: 'success' },
   refunded: { label: 'Refunded' },
 }
 
@@ -18,6 +22,8 @@ export function Wallet() {
   const { user } = useMe()
   const nav = useNavigate()
   const q = useQuery<PaymentRecord[]>(Q.payments)
+  const w = useQuery<WalletInfo>(Q.wallet)
+  const [adding, setAdding] = useState(false)
   const list = q.data ?? []
   const month = new Date().getMonth()
   const thisMonth = list.filter((p) => new Date(p.at).getMonth() === month)
@@ -28,6 +34,46 @@ export function Wallet() {
   return (
     <Page title="Wallet" back={false}>
       <div className="stack gap-6">
+        <div className="wallet-card">
+          <span className="t-sm" style={{ opacity: 0.8 }}>
+            RideSync Wallet balance{w.data?.testMode ? ' · test mode' : ''}
+          </span>
+          <span className="wallet-card__balance tabular">{w.data ? money(w.data.balance) : '—'}</span>
+          <span className="t-sm" style={{ opacity: 0.8 }}>
+            Pay for rides in one tap · cancelled rides are refunded here instantly
+          </span>
+          <div className="row gap-2" style={{ marginTop: 16 }}>
+            <Button variant="secondary" icon={<Plus />} disabled={!w.data?.canTopUp} onClick={() => setAdding(true)}>
+              Add money
+            </Button>
+          </div>
+        </div>
+        {w.data && !w.data.canTopUp && (
+          <Notice tone="info">Adding money needs Razorpay keys on the server. Run setup and add your Razorpay test keys.</Notice>
+        )}
+        {w.data && w.data.transactions.length > 0 && (
+          <section className="section">
+            <h2 className="section__title">Wallet activity</h2>
+            <div className="list">
+              {w.data.transactions.map((t) => (
+                <button key={t.id} className="list-row" onClick={() => t.bookingId && nav(`/trip/${t.bookingId}`)}>
+                  <span className="list-row__icon" style={t.amount > 0 ? { background: 'var(--success-50)', color: 'var(--success-600)' } : undefined}>
+                    {t.kind === 'topup' ? <Plus /> : t.kind === 'refund' ? <RotateCcw /> : t.amount > 0 ? <ArrowDownLeft /> : <ArrowUpRight />}
+                  </span>
+                  <span className="list-row__body">
+                    <span className="list-row__title">{t.note}</span>
+                    <span className="list-row__sub">{relative(t.createdAt)}</span>
+                  </span>
+                  <span className="tabular t-strong" style={{ color: t.amount > 0 ? 'var(--success-600)' : 'var(--ink-900)' }}>
+                    {t.amount > 0 ? '+' : '−'}
+                    {money(Math.abs(t.amount))}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        <AddMoney open={adding} testMode={!!w.data?.testMode} onClose={() => setAdding(false)} onDone={() => void w.reload()} />
         {user?.commute === 'rider' ? (
           <div className="wallet-card">
             <span className="t-sm" style={{ opacity: 0.8 }}>
@@ -35,7 +81,7 @@ export function Wallet() {
             </span>
             <span className="wallet-card__balance tabular">{money(spent)}</span>
             <span className="t-sm" style={{ opacity: 0.8 }}>
-              Paid directly to drivers by UPI or cash
+              Wallet, online, UPI and cash payments for rides
             </span>
           </div>
         ) : (
@@ -84,7 +130,7 @@ export function Wallet() {
                   <span className="list-row__body">
                     <span className="list-row__title">{p.direction === 'received' ? `From ${p.counterparty}` : `To ${p.counterparty}`}</span>
                     <span className="list-row__sub truncate">
-                      {p.route} · {p.method === 'upi' ? 'UPI' : p.method === 'online' ? 'Online' : 'Cash'} · {relative(p.at)}
+                      {p.route} · {p.method === 'upi' ? 'UPI' : p.method === 'online' ? 'Online' : p.method === 'wallet' ? 'Wallet' : 'Cash'} · {relative(p.at)}
                     </span>
                   </span>
                   <span className="stack" style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -100,9 +146,60 @@ export function Wallet() {
           )}
         </section>
         <p className="t-caption t-muted" style={{ fontWeight: 400 }}>
-          Riders pay drivers directly by UPI or cash, or online through Razorpay. Online payments for cancelled rides are refunded automatically.
+          Riders pay from the RideSync Wallet, online through Razorpay, or directly to drivers by UPI or cash. Wallet and online payments for cancelled rides are refunded automatically.
         </p>
       </div>
     </Page>
+  )
+}
+
+const AMOUNTS = [100, 200, 500, 1000]
+
+function AddMoney({ open, testMode, onClose, onDone }: { open: boolean; testMode: boolean; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [amount, setAmount] = useState('200')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const n = Number(amount)
+
+  async function add() {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await openCheckout(await wallet.topUpOrder(n))
+      if (!r) return
+      const res = await wallet.verifyTopUp(r)
+      toast({ tone: 'success', message: `${money(n)} added · balance ${money(res.balance)}` })
+      onDone()
+      onClose()
+    } catch (e) {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t add money.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <ModalSheet open={open} onClose={onClose} title="Add money">
+      <div className="stack gap-4">
+        <Field label="Amount (₹)" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').slice(0, 4))} hint="₹10 – ₹5,000 at a time" />
+        <div className="row gap-2" style={{ flexWrap: 'wrap' }}>
+          {AMOUNTS.map((a) => (
+            <Chip key={a} selected={n === a} onClick={() => setAmount(String(a))}>
+              {money(a)}
+            </Chip>
+          ))}
+        </div>
+        {testMode && (
+          <Notice tone="warning" icon={<FlaskConical />} title="Razorpay test mode">
+            No real money moves. Use UPI ID <strong>success@razorpay</strong> or card <strong>4111 1111 1111 1111</strong> (any future expiry, any CVV).
+          </Notice>
+        )}
+        {error && <Notice tone="error">{error}</Notice>}
+        <Button size="lg" block loading={busy} disabled={!(n >= 10 && n <= 5000)} onClick={add}>
+          Add {n >= 10 ? money(n) : 'money'}
+        </Button>
+      </div>
+    </ModalSheet>
   )
 }

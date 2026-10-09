@@ -55,8 +55,9 @@ const bookingStatusLabel = {
 };
 
 String paymentLabel(String? method, String status) {
-  final m = switch (method) { 'upi' => 'UPI', 'cash' => 'Cash', 'online' => 'Online', _ => '' };
+  final m = switch (method) { 'upi' => 'UPI', 'cash' => 'Cash', 'online' => 'Online', 'wallet' => 'Wallet', _ => '' };
   return switch (status) {
+    'paid_online' when method == 'wallet' => 'Paid from wallet',
     'marked_paid' => '$m · paid, waiting for driver',
     'received' => '$m · received',
     'paid_online' => 'Paid online',

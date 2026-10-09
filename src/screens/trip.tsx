@@ -29,6 +29,7 @@ const CANCEL_REASONS = ['My plans changed', 'Found another ride', 'Driver asked 
 
 export function paymentLabel(b: Booking) {
   if (!b.paymentMethod) return 'Not paid yet'
+  if (b.paymentMethod === 'wallet') return b.paymentStatus === 'refunded' ? 'Paid from wallet · refunded' : 'Paid from wallet'
   if (b.paymentMethod === 'online') return b.paymentStatus === 'refunded' ? 'Paid online · refunded' : 'Paid online'
   if (b.paymentMethod === 'cash') return b.paymentStatus === 'received' ? 'Paid in cash' : 'Cash at pickup'
   return b.paymentStatus === 'received' ? 'Paid by UPI · received' : `Paid by UPI${b.paymentRef ? ` · ref ${b.paymentRef}` : ''}`

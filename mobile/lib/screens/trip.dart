@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import '../util/checkout.dart';
 import '../util/format.dart';
 import '../util/geo.dart';
 import '../widgets/common.dart';
@@ -527,13 +527,34 @@ void showPaySheet(BuildContext context, BookingDetail d) {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Pay ${money(b.fare)}', style: RS.heading(24)),
           const SizedBox(height: 4),
-          Text(razorpayKey != null ? 'Pay online securely, or pay ${d.driver.firstName} directly.' : 'You pay ${d.driver.firstName} directly. RideSync never holds your money.', style: const TextStyle(color: RS.ink500)),
+          Text(razorpayKey != null ? 'Pay from your wallet or online, or pay ${d.driver.firstName} directly.' : 'You pay ${d.driver.firstName} directly. RideSync never holds your money.', style: const TextStyle(color: RS.ink500)),
           const SizedBox(height: 18),
+          if (!kIsWeb)
+            FutureBuilder<WalletInfo>(
+              future: api.wallet(),
+              builder: (_, snap) {
+                final w = snap.data;
+                if (w == null || (!w.canTopUp && w.balance == 0)) return const SizedBox.shrink();
+                final short = b.fare - w.balance;
+                return option(
+                  Icons.account_balance_wallet,
+                  'RideSync Wallet',
+                  short > 0 ? 'Balance ${money(w.balance)} · add ${money(short)} to pay' : 'Balance ${money(w.balance)} · instant · refunded to wallet if cancelled',
+                  short > 0 && !w.canTopUp
+                      ? null
+                      : () {
+                          Navigator.pop(sheet);
+                          _payWallet(context, d, w);
+                        },
+                  highlight: true,
+                );
+              },
+            ),
           if (razorpayKey != null && !kIsWeb)
             option(Icons.lock_outline, 'Pay online', 'UPI, cards, netbanking · secured by Razorpay · refunded if cancelled', () {
               Navigator.pop(sheet);
-              _payOnline(context, d, razorpayKey);
-            }, highlight: true),
+              _payOnline(context, d);
+            }),
           if (upi != null) ...[
             option(Icons.account_balance_wallet_outlined, 'Pay by UPI app', 'Opens GPay, PhonePe or Paytm · $upi', () async {
               Navigator.pop(sheet);
@@ -590,9 +611,8 @@ void showPaySheet(BuildContext context, BookingDetail d) {
 }
 
 /// Razorpay checkout: the server creates the order and verifies the signature.
-Future<void> _payOnline(BuildContext context, BookingDetail d, String keyId) async {
+Future<void> _payOnline(BuildContext context, BookingDetail d) async {
   final api = context.read<Session>().api;
-  final user = context.read<Session>().user!;
   Map<String, dynamic> order;
   try {
     order = await api.onlineOrder(d.booking.id);
@@ -600,37 +620,26 @@ Future<void> _payOnline(BuildContext context, BookingDetail d, String keyId) asy
     if (context.mounted) toast(context, errorText(e));
     return;
   }
-  final rp = Razorpay();
-  final done = Completer<void>();
-  rp.on(Razorpay.EVENT_PAYMENT_SUCCESS, (PaymentSuccessResponse r) async {
-    try {
-      await api.verifyOnline(d.booking.id, r.orderId ?? '${order['orderId']}', r.paymentId ?? '', r.signature ?? '');
-      if (context.mounted) await showSuccess(context, 'Paid ${money(d.booking.fare)}', subtitle: 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
-    } catch (e) {
-      if (context.mounted) toast(context, errorText(e));
-    }
-    if (!done.isCompleted) done.complete();
-  });
-  rp.on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse r) {
-    if (context.mounted) toast(context, r.code == Razorpay.PAYMENT_CANCELLED ? 'Payment cancelled' : (r.message ?? 'Payment failed. Try again or choose UPI/cash.'));
-    if (!done.isCompleted) done.complete();
-  });
-  rp.on(Razorpay.EVENT_EXTERNAL_WALLET, (ExternalWalletResponse r) {
-    if (!done.isCompleted) done.complete();
-  });
-  final prefill = (order['prefill'] as Map?)?.cast<String, dynamic>() ?? {};
-  rp.open({
-    'key': order['keyId'] ?? keyId,
-    'amount': order['amount'],
-    'currency': order['currency'] ?? 'INR',
-    'order_id': order['orderId'],
-    'name': 'RideSync',
-    'description': order['description'] ?? 'Ride with ${d.driver.name}',
-    'prefill': {'name': prefill['name'] ?? user.name, 'email': prefill['email'] ?? user.email, 'contact': prefill['contact'] ?? user.phone},
-    'theme': {'color': '#5038E6'},
-  });
-  await done.future.timeout(const Duration(minutes: 15), onTimeout: () {});
-  rp.clear();
+  if (!context.mounted) return;
+  final r = await razorpayCheckout(context, order, fallbackDescription: 'Ride with ${d.driver.name}');
+  if (r == null || !context.mounted) return;
+  if (await attempt(context, () => api.verifyOnline(d.booking.id, r.orderId, r.paymentId, r.signature)) && context.mounted) {
+    await showSuccess(context, 'Paid ${money(d.booking.fare)}', subtitle: 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
+  }
+}
+
+/// Pays from the RideSync Wallet, topping up the missing amount through Razorpay first if needed.
+Future<void> _payWallet(BuildContext context, BookingDetail d, WalletInfo w) async {
+  final api = context.read<Session>().api;
+  final fare = d.booking.fare;
+  if (w.balance < fare) {
+    final short = fare - w.balance;
+    final added = await addMoney(context, suggested: short < 10 ? 10 : short, testMode: w.testMode);
+    if (!added || !context.mounted) return;
+  }
+  if (await attempt(context, () => api.payFromWallet(d.booking.id)) && context.mounted) {
+    await showSuccess(context, 'Paid ${money(fare)} from wallet', subtitle: 'Your seat is confirmed. Refunded to your wallet if the ride is cancelled.');
+  }
 }
 
 /* ---- Rating ---- */

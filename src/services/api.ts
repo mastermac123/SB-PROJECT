@@ -364,6 +364,14 @@ export const payOnline = {
     mutate(post(`/bookings/${bookingId}/pay/online/verify`, r)),
 }
 
+export type WalletTx = { id: string; kind: 'topup' | 'ride' | 'earning' | 'refund'; amount: number; note: string; bookingId?: string; createdAt: string }
+export type WalletInfo = { balance: number; testMode: boolean; canTopUp: boolean; transactions: WalletTx[] }
+export const wallet = {
+  topUpOrder: (amount: number) => post<OnlineOrder>('/wallet/topup', { amount }),
+  verifyTopUp: (r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => mutate(post<{ ok: true; balance: number }>('/wallet/topup/verify', r)),
+  payBooking: (bookingId: string) => mutate(post<{ ok: true; balance: number }>(`/bookings/${bookingId}/pay/wallet`)),
+}
+
 export const searchRides = (q: SearchQuery) => post<SearchResponse>('/rides/search', q)
 export const matchRide = (rideId: string, query: SearchQuery) => post<{ match: MatchResult | null }>(`/rides/${rideId}/match`, { query }).then((r) => r.match)
 export const routePreview = (from: Place, to: Place) => post<RouteInfo>('/route', { from, to })
@@ -421,6 +429,7 @@ export const Q = {
   threads: '/threads',
   notifications: '/notifications',
   payments: '/payments',
+  wallet: '/wallet',
   badges: '/badges',
 }
 

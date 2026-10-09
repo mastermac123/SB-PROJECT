@@ -141,6 +141,23 @@ addColumn('bookings', 'gateway_order_id', 'TEXT')
 addColumn('bookings', 'gateway_payment_id', 'TEXT')
 addColumn('bookings', 'refund_id', 'TEXT')
 
+// RideSync Wallet: every credit/debit is a row; the balance is their sum (in rupees).
+db.exec(`
+CREATE TABLE IF NOT EXISTS wallet_tx (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'done',
+  note TEXT NOT NULL DEFAULT '',
+  booking_id TEXT,
+  gateway_order_id TEXT UNIQUE,
+  gateway_payment_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS wallet_tx_user ON wallet_tx(user_id, created_at);
+`)
+
 export type Row = Record<string, unknown>
 
 export const one = <T = Row>(sql: string, ...params: unknown[]) => db.prepare(sql).get(...(params as never[])) as T | undefined

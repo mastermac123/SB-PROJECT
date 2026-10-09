@@ -1,0 +1,72 @@
+name: iPhone app
+
+# Builds the RideSync Flutter app (mobile/) for iPhone on a Mac runner and attaches an
+# unsigned RideSync.ipa to the "iPhone app (latest)" release.
+#
+# Apple only lets signed apps run, so install it from a Windows PC or Mac with
+# Sideloadly (free Apple ID; the app works for 7 days, then re-install) — see README
+# "iPhone". For TestFlight / App Store you need an Apple Developer account (₹8,700/year).
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Build iPhone app (unsigned)
+        env:
+          # Optional repository secret: a Google Maps key restricted to iOS apps.
+          GOOGLE_MAPS_IOS_KEY: ${{ secrets.GOOGLE_MAPS_IOS_KEY }}
+        run: |
+          GM=false
+          if [ -n "$GOOGLE_MAPS_IOS_KEY" ]; then GM=true; fi
+          flutter build ios --release --no-codesign \
+            --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} \
+            --dart-define=GOOGLE_MAPS=$GM
+
+      - name: Package IPA
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry RideSync.ipa Payload
+
+      - name: Publish IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ios-latest --yes --cleanup-tag || true
+          gh release create ios-latest RideSync.ipa \
+            --target "${GITHUB_SHA}" \
+            --title "iPhone app (latest)" \
+            --prerelease \
+            --notes "RideSync for iPhone (Flutter), built from commit ${GITHUB_SHA::7}. Unsigned: install with Sideloadly on a Windows PC or Mac using your Apple ID (see the README, section iPhone). On the iPhone turn on Settings → Privacy & Security → Developer Mode, and trust your Apple ID under Settings → General → VPN & Device Management."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RideSync-ios
+          path: mobile/RideSync.ipa

@@ -551,6 +551,10 @@ async function flushRefunds() {
     ids.map(async (id) => {
       const b = one(`SELECT * FROM bookings WHERE id = ?`, id)
       if (!b || b.payment_status !== 'paid_online') return
+      if (b.payment_method === 'wallet') {
+        refundToWallet(b)
+        return
+      }
       try {
         const refund = await refundPayment(String(b.gateway_payment_id), Number(b.fare), { booking: id })
         run(`UPDATE bookings SET payment_status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?`, refund.id, nowIso(), id)
@@ -787,6 +791,118 @@ api.post(
   }),
 )
 
+/* ---- RideSync Wallet ------------------------------------------------------- */
+
+const walletBalance = (userId: string) => Number(one(`SELECT COALESCE(SUM(amount), 0) AS n FROM wallet_tx WHERE user_id = ? AND status = 'done'`, userId)?.n ?? 0)
+
+function walletEntry(userId: string, kind: string, amount: number, note: string, bookingId?: string) {
+  run(`INSERT INTO wallet_tx (id, user_id, kind, amount, note, booking_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, newId('w'), userId, kind, amount, note, bookingId ?? null, nowIso())
+}
+
+/** Cancelled wallet-paid ride: money goes straight back to the rider's wallet. */
+function refundToWallet(b: Row) {
+  const r = rideRow(String(b.ride_id))
+  const fare = Number(b.fare)
+  tx(() => {
+    run(`UPDATE bookings SET payment_status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?`, `wallet`, nowIso(), b.id)
+    walletEntry(String(b.rider_id), 'refund', fare, 'Refund · ride cancelled', String(b.id))
+    walletEntry(String(r.driver_id), 'refund', -fare, 'Refund to rider · ride cancelled', String(b.id))
+  })
+  notify(String(b.rider_id), 'payment', 'Refunded to wallet', `${money(fare)} is back in your RideSync Wallet.`, `/trip/${b.id}`)
+  sync([String(b.rider_id), String(r.driver_id)])
+}
+
+function creditTopup(orderId: string, paymentId: string) {
+  const t = one(`SELECT * FROM wallet_tx WHERE gateway_order_id = ?`, orderId)
+  if (!t || t.status === 'done') return false
+  run(`UPDATE wallet_tx SET status = 'done', gateway_payment_id = ?, created_at = ? WHERE id = ?`, paymentId, nowIso(), t.id)
+  notify(String(t.user_id), 'payment', 'Money added', `${money(Number(t.amount))} added to your RideSync Wallet.`, '/wallet')
+  sync([String(t.user_id)])
+  return true
+}
+
+api.get(
+  '/wallet',
+  requireOnboarded,
+  h((req) => ({
+    balance: walletBalance(meId(req)),
+    testMode: env.razorpay.keyId.startsWith('rzp_test_'),
+    canTopUp: razorpayConfigured(),
+    transactions: all(`SELECT id, kind, amount, note, booking_id, created_at FROM wallet_tx WHERE user_id = ? AND status = 'done' ORDER BY created_at DESC LIMIT 100`, meId(req)).map((t) => ({
+      id: t.id,
+      kind: t.kind,
+      amount: Number(t.amount),
+      note: t.note,
+      bookingId: t.booking_id ?? undefined,
+      createdAt: t.created_at,
+    })),
+  })),
+)
+
+api.post(
+  '/wallet/topup',
+  requireOnboarded,
+  h(async (req) => {
+    if (!razorpayConfigured()) throw new HttpError(404, 'Online payments aren’t set up on this server.')
+    const { amount } = parse(z.object({ amount: z.number().int().min(10, 'Add at least ₹10.').max(5000, 'You can add up to ₹5,000 at a time.') }), req.body)
+    if (walletBalance(meId(req)) + amount > 10000) throw new HttpError(400, 'Your wallet can hold up to ₹10,000.')
+    const id = newId('w')
+    const order = await createOrder(amount, id, { wallet: id, user: meId(req) })
+    run(`INSERT INTO wallet_tx (id, user_id, kind, amount, status, note, gateway_order_id, created_at) VALUES (?, ?, 'topup', ?, 'pending', 'Added money', ?, ?)`, id, meId(req), amount, order.id, nowIso())
+    return {
+      keyId: env.razorpay.keyId,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      description: `Add ${money(amount)} to RideSync Wallet`,
+      prefill: { name: String(me(req).name), email: String(me(req).email), contact: String(me(req).phone ?? '') },
+    }
+  }),
+)
+
+api.post(
+  '/wallet/topup/verify',
+  requireOnboarded,
+  h((req) => {
+    const p = parse(z.object({ razorpay_order_id: z.string().max(60), razorpay_payment_id: z.string().max(60), razorpay_signature: z.string().max(200) }), req.body)
+    const t = one(`SELECT * FROM wallet_tx WHERE gateway_order_id = ?`, p.razorpay_order_id)
+    if (!t || t.user_id !== meId(req)) throw new HttpError(404, 'Top-up not found.')
+    if (!verifyPaymentSignature(p.razorpay_order_id, p.razorpay_payment_id, p.razorpay_signature)) throw new HttpError(400, 'We couldn’t verify this payment. If money was taken, it will be refunded automatically.')
+    creditTopup(p.razorpay_order_id, p.razorpay_payment_id)
+    return { ok: true, balance: walletBalance(meId(req)) }
+  }),
+)
+
+api.post(
+  '/bookings/:id/pay/wallet',
+  requireOnboarded,
+  h((req) => {
+    const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role !== 'rider') throw new HttpError(403, 'Only the rider can pay.')
+    if (b.payment_status === 'paid_online') throw new HttpError(409, 'This ride is already paid.')
+    if (!['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(String(b.status))) throw new HttpError(409, 'This booking can’t be paid right now.')
+    const fare = Number(b.fare)
+    tx(() => {
+      if (walletBalance(meId(req)) < fare) throw new HttpError(402, `Not enough money in your wallet. Add at least ${money(fare - walletBalance(meId(req)))}.`)
+      const rider = first(String(me(req).name))
+      walletEntry(meId(req), 'ride', -fare, `Ride with ${first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'driver'))}`, String(b.id))
+      walletEntry(String(r.driver_id), 'earning', fare, `Ride fare from ${rider}`, String(b.id))
+      run(
+        `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = 'wallet', payment_status = 'paid_online', gateway_payment_id = ?, payment_ref = 'wallet', paid_at = ?, updated_at = ? WHERE id = ?`,
+        `wallet:${b.id}`,
+        nowIso(),
+        nowIso(),
+        b.id,
+      )
+      systemMessage(String(b.id), `${rider} paid ${money(fare)} from RideSync Wallet.`)
+    })
+    notify(String(r.driver_id), 'payment', `${first(String(me(req).name))} paid from wallet`, `${money(fare)} added to your RideSync Wallet.`, `/drive/${r.id}`)
+    notify(meId(req), 'payment', 'Payment successful', `${money(fare)} paid from wallet · seat confirmed.`, `/trip/${b.id}`)
+    sync([String(r.driver_id), meId(req)])
+    return { ok: true, balance: walletBalance(meId(req)) }
+  }),
+)
+
 /* ---- Online payment (Razorpay) -------------------------------------------- */
 
 function markPaidOnline(bookingId: string, orderId: string, paymentId: string) {
@@ -864,6 +980,7 @@ export async function razorpayWebhook(req: Request, res: Response) {
     if ((event.event === 'payment.captured' || event.event === 'order.paid') && pay?.order_id) {
       const b = one(`SELECT id FROM bookings WHERE gateway_order_id = ?`, pay.order_id)
       if (b) markPaidOnline(String(b.id), pay.order_id, pay.id)
+      else creditTopup(pay.order_id, pay.id)
     }
   } catch (e) {
     console.error('[ridesync] webhook error', e)

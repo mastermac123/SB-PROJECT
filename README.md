@@ -125,6 +125,18 @@ How it works:
 
 Riders can still pay the driver directly by UPI, or in cash.
 
+### RideSync Wallet (demo)
+
+With Razorpay keys set, every student gets a **RideSync Wallet** (Wallet tab → **Add money**):
+
+- Add ₹10–₹5,000 through Razorpay (up to ₹10,000 balance), then pay rides from the wallet in one tap. If the balance is short, the app tops up just the difference.
+- The fare moves to the driver's wallet straight away. If the ride is cancelled, it goes back to the rider's wallet instantly.
+- Test mode shows a **TEST MODE** badge; pay with UPI ID `success@razorpay` or card `4111 1111 1111 1111` (any future expiry, any CVV).
+
+Keep the wallet in **test mode** for demos. Holding students' money for real is a prepaid wallet under RBI rules, which needs RBI authorisation (or a licensed partner). For real money, use **Pay online** instead, where each ride is paid and refunded through Razorpay.
+
+**Demo script:** sign in as a rider → Wallet → Add money ₹200 → pay with `success@razorpay` → book a ride → when the driver accepts, Pay → RideSync Wallet → cancel the ride and show the refund in Wallet activity.
+
 ## 3d. Maps
 
 Maps, place search and routes work with **no keys**, using free OpenStreetMap services.
@@ -233,12 +245,18 @@ flutter build apk --dart-define=RIDESYNC_SERVER_URL=https://your-server
 
 ### iPhone
 
-The same Flutter code builds for iOS (`mobile/ios`), but Apple requires:
+GitHub builds the iPhone app on a Mac for you (`.github/workflows/ios.yml`) whenever the app code changes. Apple only runs signed apps, so you sign it on your own computer with a free tool:
 
-- a **Mac** with Xcode
-- an **Apple Developer account** ($99/year) to install on iPhones through TestFlight or the App Store
+1. Download **RideSync.ipa** from https://github.com/mastermac123/SB-PROJECT/releases/tag/ios-latest on your **laptop**.
+2. Install **iTunes** and **iCloud** from apple.com (not the Microsoft Store versions), then install **Sideloadly** from https://sideloadly.io.
+3. Connect the iPhone with a cable, unlock it and tap **Trust**.
+4. Open Sideloadly, drag in `RideSync.ipa`, enter your Apple ID and click **Start**. Use a spare Apple ID if you prefer; it's only sent to Apple.
+5. On the iPhone: **Settings → Privacy & Security → Developer Mode → On** (it restarts), then **Settings → General → VPN & Device Management →** your Apple ID → **Trust**.
+6. Open RideSync and paste the share.bat link, as on Android.
 
-On the Mac, run `flutter build ipa --dart-define=RIDESYNC_SERVER_URL=https://your-server`, then upload it with Xcode or Transporter. Until then, iPhone users can use the website: open it in Safari → **Share** → **Add to Home Screen**.
+With a free Apple ID the app works for **7 days**; re-install it with Sideloadly to renew. For TestFlight or the App Store you need an **Apple Developer account** ($99/year): on a Mac, run `flutter build ipa` and upload with Transporter.
+
+No laptop handy? Open the website in Safari → **Share** → **Add to Home Screen**. It works like an app.
 
 ### What's in the app
 
@@ -316,7 +334,7 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 37 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
+npm test          # 46 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
 npm run typecheck
 ```
 

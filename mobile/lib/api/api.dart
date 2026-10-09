@@ -154,6 +154,14 @@ class Api {
   Future<void> verifyOnline(String bookingId, String orderId, String paymentId, String signature) =>
       post('/bookings/$bookingId/pay/online/verify', {'razorpay_order_id': orderId, 'razorpay_payment_id': paymentId, 'razorpay_signature': signature});
 
+  /* ---- RideSync Wallet ---- */
+
+  Future<WalletInfo> wallet() async => WalletInfo.fromJson(_map(await get('/wallet')));
+  Future<Map<String, dynamic>> walletTopUpOrder(int amount) async => _map(await post('/wallet/topup', {'amount': amount}));
+  Future<void> verifyTopUp(String orderId, String paymentId, String signature) =>
+      post('/wallet/topup/verify', {'razorpay_order_id': orderId, 'razorpay_payment_id': paymentId, 'razorpay_signature': signature});
+  Future<void> payFromWallet(String bookingId) => post('/bookings/$bookingId/pay/wallet');
+
   /* ---- Lists ---- */
 
   Future<Trips> trips() async => Trips.fromJson(_map(await get('/trips')));

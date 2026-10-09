@@ -136,3 +136,53 @@ describe('place search', () => {
     expect((await a.get('/api/places/reverse?lat=999&lng=1')).status).toBe(400)
   })
 })
+
+describe('RideSync Wallet', () => {
+  it('adds money through Razorpay, pays a ride, and refunds to the wallet on cancel', async () => {
+    mockRazorpay()
+    const { rider, driver, booking } = await acceptedBooking('w')
+    expect((await rider.get('/api/wallet').set(H)).body).toMatchObject({ balance: 0, testMode: true, canTopUp: true })
+
+    // Not enough money yet.
+    expect((await rider.post(`/api/bookings/${booking.id}/pay/wallet`).set(H)).status).toBe(402)
+
+    const order = await rider.post('/api/wallet/topup').set(H).send({ amount: 200 })
+    expect(order.status).toBe(200)
+    expect(order.body.amount).toBe(20000)
+    // A forged signature doesn't credit anything.
+    const bad = await rider.post('/api/wallet/topup/verify').set(H).send({ razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_x', razorpay_signature: 'nope' })
+    expect(bad.status).toBe(400)
+    // Someone else can't claim the top-up.
+    const other = await driver.post('/api/wallet/topup/verify').set(H).send({ razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_w1', razorpay_signature: sign(`${order.body.orderId}|pay_w1`, 'secret123') })
+    expect(other.status).toBe(404)
+    const ok = await rider.post('/api/wallet/topup/verify').set(H).send({ razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_w1', razorpay_signature: sign(`${order.body.orderId}|pay_w1`, 'secret123') })
+    expect(ok.body).toMatchObject({ ok: true, balance: 200 })
+    // Verifying twice doesn't double-credit.
+    await rider.post('/api/wallet/topup/verify').set(H).send({ razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_w1', razorpay_signature: sign(`${order.body.orderId}|pay_w1`, 'secret123') })
+    expect((await rider.get('/api/wallet').set(H)).body.balance).toBe(200)
+
+    const paid = await rider.post(`/api/bookings/${booking.id}/pay/wallet`).set(H)
+    expect(paid.body).toMatchObject({ ok: true, balance: 120 })
+    expect((await driver.get('/api/wallet').set(H)).body.balance).toBe(80)
+    expect((await rider.post(`/api/bookings/${booking.id}/pay/wallet`).set(H)).status).toBe(409)
+    const b = (await rider.get(`/api/bookings/${booking.id}`).set(H)).body.booking
+    expect(b).toMatchObject({ status: 'confirmed', paymentMethod: 'wallet', paymentStatus: 'paid_online' })
+
+    const refundCalls = calls.filter((c) => c.url.includes('/refund')).length
+    expect((await rider.post(`/api/bookings/${booking.id}/cancel`).set(H).send({ reason: 'My plans changed' })).status).toBe(200)
+    expect((await rider.get('/api/wallet').set(H)).body.balance).toBe(200)
+    expect((await driver.get('/api/wallet').set(H)).body.balance).toBe(0)
+    expect(calls.filter((c) => c.url.includes('/refund')).length).toBe(refundCalls) // no gateway refund for wallet money
+    expect((await rider.get(`/api/bookings/${booking.id}`).set(H)).body.booking.paymentStatus).toBe('refunded')
+  })
+
+  it('credits a top-up from the webhook too', async () => {
+    mockRazorpay()
+    const rider = await user('hook.w@vit.edu.in', 'RHW0001')
+    const order = (await rider.post('/api/wallet/topup').set(H).send({ amount: 50 })).body
+    const body = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_hook', order_id: order.orderId } } } })
+    const res = await request(app).post('/api/payments/razorpay/webhook').set('content-type', 'application/json').set('x-razorpay-signature', sign(body, 'whsec')).send(body)
+    expect(res.status).toBe(200)
+    expect((await rider.get('/api/wallet').set(H)).body.balance).toBe(50)
+  })
+})
