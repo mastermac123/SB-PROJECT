@@ -8,7 +8,7 @@ const transport = smtpConfigured()
 export async function sendLoginCode(email: string, code: string) {
   if (!transport) {
     // Development without SMTP: print to the server console only.
-    console.log(`[ridesync] login code for ${email}: ${code}`)
+    console.log(`\n  ┌──────────────────────────────────────────────\n  │ RideSync login code for ${email}\n  │\n  │      ${code}\n  │\n  │ (shown here because email isn’t set up yet)\n  └──────────────────────────────────────────────\n`)
     return
   }
   await transport.sendMail({

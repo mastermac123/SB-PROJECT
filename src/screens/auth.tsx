@@ -328,6 +328,7 @@ export function Login() {
 }
 
 function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: boolean, onboarded: boolean) => void; onResend: () => Promise<unknown> }) {
+  const inTerminal = useConfig().data?.codesInTerminal
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''))
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -379,11 +380,19 @@ function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: 
         <div className="state__art" style={{ marginBottom: 8 }}>
           <MailCheck />
         </div>
-        <h1 className="t-h1">Check your college inbox</h1>
+        <h1 className="t-h1">{inTerminal ? 'Enter your login code' : 'Check your college inbox'}</h1>
         <p className="t-body t-muted">
-          Enter the 6-digit code we sent to <strong style={{ color: 'var(--ink-900)' }}>{email}</strong>. It expires in 10 minutes.
+          {inTerminal ? 'Enter the 6-digit code for ' : 'Enter the 6-digit code we sent to '}
+          <strong style={{ color: 'var(--ink-900)' }}>{email}</strong>. It expires in 10 minutes.
         </p>
       </div>
+      {inTerminal && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice tone="info" icon={<Terminal />} title="Running on your computer">
+            Email sending isn’t set up yet, so the code is shown in the black terminal window where RideSync is running. Add SMTP settings to send real emails.
+          </Notice>
+        </div>
+      )}
       <div className="stack gap-4">
         <div className={cx('otp', error && 'is-invalid')} role="group" aria-label="Login code">
           {digits.map((d, i) => (

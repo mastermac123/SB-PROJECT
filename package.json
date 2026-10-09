@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "RideSync AI — AI-matched carpooling for the VIT community",
+  "description": "RideSync AI \u2014 AI-matched carpooling for the VIT community",
   "scripts": {
+    "predev": "node scripts/check-node.mjs",
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:web": "vite",
+    "dev:web": "vite --open",
     "dev:api": "tsx watch server/index.ts",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
+    "prestart": "node scripts/check-node.mjs",
     "start": "node --import tsx server/prod.ts",
     "typecheck": "tsc -b --noEmit && tsc -p tsconfig.server.json",
     "test": "vitest run"

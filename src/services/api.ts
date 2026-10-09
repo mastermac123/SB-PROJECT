@@ -237,7 +237,7 @@ export function useDriverLocation(rideId: string | undefined, initial?: DriverLo
    Auth & profile
    ========================================================================== */
 
-export type AppConfig = { allowedDomain: string; googleClientId: string | null; microsoftLogin: boolean; emailLogin: boolean; devLogin: boolean }
+export type AppConfig = { allowedDomain: string; googleClientId: string | null; microsoftLogin: boolean; emailLogin: boolean; codesInTerminal: boolean; devLogin: boolean }
 
 export const useConfig = () => useQuery<AppConfig>('/config')
 

@@ -42,7 +42,7 @@ describe('auth', () => {
     const agent = request.agent(app)
     expect((await agent.post('/api/auth/code/request').set(H).send({ email: 'x@gmail.com' })).status).toBe(403)
     expect((await agent.post('/api/auth/code/request').set(H).send({ email: 'Neha.Patil@vit.edu.in' })).status).toBe(200)
-    const code = String(log.mock.calls.flat().join(' ').match(/: (\d{6})/)?.[1])
+    const code = String(log.mock.calls.flat().join(' ').match(/│\s+(\d{6})/)?.[1])
     log.mockRestore()
     expect((await agent.post('/api/auth/code/verify').set(H).send({ email: 'neha.patil@vit.edu.in', code: code === '000000' ? '111111' : '000000' })).status).toBe(400)
     const ok = await agent.post('/api/auth/code/verify').set(H).send({ email: 'neha.patil@vit.edu.in', code })

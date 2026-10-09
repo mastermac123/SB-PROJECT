@@ -39,7 +39,7 @@ import {
 } from './logic'
 import { getRoute } from './routing'
 import { microsoftCallback, microsoftStart } from './microsoft'
-import { microsoftConfigured } from './env'
+import { microsoftConfigured, smtpConfigured } from './env'
 
 export const api = Router()
 
@@ -87,7 +87,7 @@ const QueryZ = z.object({
 /* ---- Config & auth -------------------------------------------------------- */
 
 api.get('/config', (_req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), devLogin: env.devLogin })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !smtpConfigured(), devLogin: env.devLogin })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
