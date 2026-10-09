@@ -17,6 +17,7 @@ echo.
 echo   In a few seconds a link like  https://something.trycloudflare.com  appears below.
 echo   Open that link on any phone (Android or iPhone), on any network.
 echo   The link works while this window and start.bat stay open, and changes every time.
+echo   Wait for "Registered tunnel connection" below before opening the link.
 echo.
-cloudflared tunnel --no-autoupdate --url http://localhost:5173
+cloudflared tunnel --no-autoupdate --protocol http2 --url http://localhost:5173
 pause
