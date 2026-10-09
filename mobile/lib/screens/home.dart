@@ -63,9 +63,9 @@ class HomeTab extends StatelessWidget {
             ],
           ),
           children: [
-            Text('${_greeting()}, ${user.firstName}', style: const TextStyle(color: RS.ink500, fontSize: 15)),
+            Text('${_greeting()}, ${user.firstName}.', style: const TextStyle(color: RS.ink500, fontSize: 15)),
             const SizedBox(height: 2),
-            Text('Where are you going?', style: RS.heading(24)),
+            Text('Where are you heading?', style: RS.heading(24)),
             const SizedBox(height: 14),
             PressScale(
               onTap: onFind,
@@ -89,18 +89,17 @@ class HomeTab extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: _QuickAction(icon: Icons.search, label: 'Find a ride', onTap: onFind)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.directions_car_rounded,
-                  label: user.canDrive ? 'Offer a ride' : 'Add your car',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => user.canDrive ? const OfferRideScreen() : const VehicleScreen(offerAfter: true))),
-                ),
+            const SizedBox(height: 10),
+            // One primary action (where to?) and the driver's option right under it.
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => user.canDrive ? const OfferRideScreen() : const VehicleScreen(offerAfter: true))),
+                icon: const Icon(Icons.directions_car_rounded, size: 20),
+                label: Text(user.canDrive ? 'Offer a ride' : 'Have a car? Offer rides'),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(64, 50)),
               ),
-            ]),
+            ),
             if (active.isNotEmpty || driving.isNotEmpty) const SectionTitle('Your upcoming rides'),
             for (final (i, t) in active.indexed)
               FadeSlideIn(
@@ -173,21 +172,4 @@ class HomeTab extends StatelessWidget {
       },
     );
   }
-}
-
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Panel(
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        child: Row(children: [
-          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: RS.primary50, borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: RS.primary, size: 20)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
-        ]),
-      );
 }

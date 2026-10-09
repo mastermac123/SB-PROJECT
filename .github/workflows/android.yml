@@ -54,7 +54,7 @@ jobs:
           GM=false
           if [ -n "$GOOGLE_MAPS_ANDROID_KEY" ]; then GM=true; fi
           echo "Google Maps in the app: $GM"
-          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} --dart-define=GOOGLE_MAPS=$GM"
+          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} --dart-define=GOOGLE_MAPS=$GM --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}"
           # One APK that works on every phone, plus a smaller one for modern (64-bit) phones.
           flutter build apk $ARGS
           flutter build apk --split-per-abi $ARGS

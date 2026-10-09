@@ -72,16 +72,18 @@ class _HomeShellState extends State<HomeShell> {
     final pages = [HomeTab(onFind: () => goTo(1)), const FindTab(), const RidesTab(), const InboxTab(), const ProfileTab()];
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(border: Border(top: BorderSide(color: RS.line))),
+        child: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: goTo,
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded, color: RS.primary), label: 'Home'),
-          const NavigationDestination(icon: Icon(Icons.search), selectedIcon: Icon(Icons.search, color: RS.primary), label: 'Find Ride'),
+          const NavigationDestination(icon: Icon(Icons.search), selectedIcon: Icon(Icons.search, color: RS.primary), label: 'Find ride'),
           NavigationDestination(
             icon: Badge(isLabelVisible: _requests > 0, label: Text('$_requests'), child: const Icon(Icons.route_outlined)),
             selectedIcon: Badge(isLabelVisible: _requests > 0, label: Text('$_requests'), child: const Icon(Icons.route, color: RS.primary)),
-            label: 'My Rides',
+            label: 'My rides',
           ),
           NavigationDestination(
             icon: Badge(isLabelVisible: _unread > 0, label: Text('$_unread'), child: const Icon(Icons.chat_bubble_outline)),
@@ -90,6 +92,7 @@ class _HomeShellState extends State<HomeShell> {
           ),
           const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: RS.primary), label: 'Profile'),
         ],
+      ),
       ),
     );
   }

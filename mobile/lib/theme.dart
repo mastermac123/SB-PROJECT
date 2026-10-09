@@ -25,13 +25,17 @@ class RS {
   static const danger = Color(0xFFD12C3B);
   static const danger50 = Color(0xFFFDECEE);
 
-  static const radiusSm = 10.0;
-  static const radiusMd = 14.0;
-  static const radiusLg = 20.0;
-  static const radiusXl = 28.0;
+  static const radiusSm = 8.0;
+  static const radiusMd = 12.0;
+  static const radiusLg = 16.0;
+  static const radiusXl = 22.0;
 
+  /// Routes are Google-style blue; traffic colours paint over them.
+  static const route = Color(0xFF1A73E8);
+
+  /// One family across the app (Inter), tightened for headings — same as the website.
   static TextStyle heading(double size, {Color color = ink900, FontWeight weight = FontWeight.w700}) =>
-      GoogleFonts.plusJakartaSans(fontSize: size, fontWeight: weight, color: color, height: 1.2, letterSpacing: -0.2);
+      GoogleFonts.inter(fontSize: size, fontWeight: weight, color: color, height: 1.2, letterSpacing: -0.02 * size);
 }
 
 ThemeData buildTheme() {
@@ -49,12 +53,12 @@ ThemeData buildTheme() {
       TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
     }),
     appBarTheme: AppBarTheme(
-      backgroundColor: RS.canvas,
+      backgroundColor: RS.surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
       foregroundColor: RS.ink900,
-      titleTextStyle: RS.heading(20),
+      titleTextStyle: RS.heading(18, weight: FontWeight.w600),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -99,11 +103,16 @@ ThemeData buildTheme() {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       labelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: RS.ink900),
     ),
+    // Quiet bottom bar: no pill, the active tab is just ink + brand colour.
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: RS.surface,
-      indicatorColor: RS.primary50,
+      indicatorColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      labelTextStyle: WidgetStatePropertyAll(GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+      shadowColor: Colors.transparent,
+      height: 64,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(size: 24, color: s.contains(WidgetState.selected) ? RS.primary : RS.ink400)),
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => GoogleFonts.inter(fontSize: 11.5, fontWeight: s.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500, color: s.contains(WidgetState.selected) ? RS.ink900 : RS.ink500)),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

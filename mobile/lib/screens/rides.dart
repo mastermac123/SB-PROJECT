@@ -71,17 +71,26 @@ class _RidesTabState extends State<RidesTab> {
           final list = all.where((i) => i.tab == tab).toList()
             ..sort((a, b) => tab == _Tab.upcoming || tab == _Tab.active ? a.at.compareTo(b.at) : b.at.compareTo(a.at));
           return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            // Text tabs with an underline (like the website) — all four always fit.
+            DecoratedBox(
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: RS.line))),
               child: Row(children: [
                 for (final t in _Tab.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text('${_label(t)}${counts[t]! > 0 && (t == _Tab.upcoming || t == _Tab.active) ? ' · ${counts[t]}' : ''}'),
-                      selected: tab == t,
-                      showCheckmark: false,
-                      onSelected: (_) => setState(() => _picked = t),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _picked = t),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: tab == t ? RS.primary : Colors.transparent, width: 2))),
+                        child: Text(
+                          '${_label(t)}${counts[t]! > 0 && (t == _Tab.upcoming || t == _Tab.active) ? ' ${counts[t]}' : ''}',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.fade,
+                          softWrap: false,
+                          style: TextStyle(fontSize: 14, fontWeight: tab == t ? FontWeight.w700 : FontWeight.w500, color: tab == t ? RS.ink900 : RS.ink500),
+                        ),
+                      ),
                     ),
                   ),
               ]),

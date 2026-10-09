@@ -47,7 +47,8 @@ jobs:
           if [ -n "$GOOGLE_MAPS_IOS_KEY" ]; then GM=true; fi
           flutter build ios --release --no-codesign \
             --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} \
-            --dart-define=GOOGLE_MAPS=$GM
+            --dart-define=GOOGLE_MAPS=$GM \
+            --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}
 
       - name: Package IPA
         run: |

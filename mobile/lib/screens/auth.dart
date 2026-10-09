@@ -10,28 +10,87 @@ import '../widgets/common.dart';
 import '../widgets/motion.dart';
 import '../widgets/route_art.dart';
 
-class SplashScreen extends StatelessWidget {
+/// Build stamp (commit), shown small on the sign-in screens so it's easy to tell which app is installed.
+const appBuild = String.fromEnvironment('RIDESYNC_BUILD', defaultValue: 'dev');
+
+/// Opening animation: the R mark fades in, a route draws with a dot travelling along it,
+/// then the logo and tagline appear. Fast and quiet — no particles, no spinning.
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300))..forward();
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  double _seg(double a, double b) => Curves.easeOutCubic.transform(((_c.value - a) / (b - a)).clamp(0.0, 1.0));
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: RS.surface,
         body: Center(
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.85, end: 1),
-            duration: const Duration(milliseconds: 700),
-            curve: Curves.easeOutBack,
-            builder: (_, v, child) => Opacity(opacity: ((v - 0.85) / 0.15).clamp(0, 1), child: Transform.scale(scale: v, child: child)),
-            child: Image.asset('assets/ridesync-logo.png', width: 220),
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (_, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(width: 220, height: 56, child: CustomPaint(painter: _SplashRoute(_seg(0.1, 0.65)))),
+              const SizedBox(height: 18),
+              Opacity(
+                opacity: _seg(0.45, 0.8),
+                child: Transform.translate(offset: Offset(0, 8 * (1 - _seg(0.45, 0.8))), child: Image.asset('assets/ridesync-logo.png', width: 210)),
+              ),
+              const SizedBox(height: 14),
+              Opacity(opacity: _seg(0.7, 1), child: Text('Smart rides. Shared journeys.', style: TextStyle(color: RS.ink500, fontSize: 14, fontWeight: FontWeight.w500))),
+            ]),
           ),
         ),
       );
 }
 
-/// Shared frame for the sign-in screens: logo, title, subtitle, content.
+class _SplashRoute extends CustomPainter {
+  _SplashRoute(this.t);
+  final double t;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final path = Path()
+      ..moveTo(8, h * .78)
+      ..cubicTo(w * .3, h * .78, w * .32, h * .2, w * .55, h * .24)
+      ..cubicTo(w * .76, h * .28, w * .8, h * .62, w - 8, h * .4);
+    final m = path.computeMetrics().first;
+    canvas.drawPath(path, Paint()
+      ..color = RS.sunken
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round);
+    canvas.drawPath(m.extractPath(0, m.length * t), Paint()
+      ..color = RS.primary
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round);
+    final p = m.getTangentForOffset(m.length * t)!.position;
+    canvas.drawCircle(p, 8, Paint()..color = Colors.white);
+    canvas.drawCircle(p, 8, Paint()
+      ..color = RS.primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3);
+  }
+
+  @override
+  bool shouldRepaint(_SplashRoute old) => old.t != t;
+}
+
+/// Shared frame for the sign-in screens: small logo, overline, title, subtitle, content.
 class _AuthFrame extends StatelessWidget {
-  const _AuthFrame({required this.title, required this.subtitle, required this.children, this.onBack});
+  const _AuthFrame({required this.title, required this.subtitle, required this.children, this.onBack, this.overline});
   final String title;
   final String subtitle;
+  final String? overline;
   final List<Widget> children;
   final VoidCallback? onBack;
 
@@ -39,18 +98,26 @@ class _AuthFrame extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: RS.surface,
         body: SafeArea(
-          child: ListView(padding: const EdgeInsets.fromLTRB(24, 12, 24, 32), children: [
-            Row(children: [
-              if (onBack != null) IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back), style: IconButton.styleFrom(backgroundColor: RS.sunken)) else const SizedBox(height: 48),
-            ]),
-            const SizedBox(height: 12),
-            Align(alignment: Alignment.centerLeft, child: Image.asset('assets/ridesync-logo.png', height: 34)),
-            const SizedBox(height: 36),
-            Text(title, style: RS.heading(28)),
-            const SizedBox(height: 8),
-            Text(subtitle, style: const TextStyle(color: RS.ink500, fontSize: 15, height: 1.45)),
+          child: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 28), children: [
+            SizedBox(
+              height: 48,
+              child: Stack(alignment: Alignment.center, children: [
+                if (onBack != null) Align(alignment: Alignment.centerLeft, child: IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back), tooltip: 'Back')),
+                Image.asset('assets/ridesync-logo.png', height: 24),
+              ]),
+            ),
             const SizedBox(height: 28),
+            if (overline != null) ...[
+              Text(overline!.toUpperCase(), style: const TextStyle(color: RS.primary, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 1)),
+              const SizedBox(height: 6),
+            ],
+            Text(title, style: RS.heading(26)),
+            const SizedBox(height: 6),
+            Text(subtitle, style: const TextStyle(color: RS.ink500, fontSize: 15, height: 1.45)),
+            const SizedBox(height: 24),
             ...children,
+            const SizedBox(height: 24),
+            const Center(child: Text('Build $appBuild', style: TextStyle(color: RS.ink400, fontSize: 11))),
           ]),
         ),
       );
@@ -107,7 +174,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _code = TextEditingController();
   bool _landing = true;
-  void _openLogin() => setState(() => _landing = false);
+  bool _signup = false;
+  void _openLogin() => setState(() => (_landing = false, _signup = false));
+  void _openSignup() => setState(() => (_landing = false, _signup = true));
   bool _codeStep = false;
   bool _busy = false;
   String? _error;
@@ -193,7 +262,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_landing && !_codeStep) return _landingView(session);
     if (_codeStep) {
       return _AuthFrame(
-        title: 'Check your email',
+        overline: 'Almost there',
+        title: 'Check your VIT inbox',
         subtitle: cfg?.codesInTerminal == true
             ? 'Email isn’t set up on this server yet, so the 6-digit code for $_cleanEmail is shown in the black RideSync window on the laptop.'
             : 'We sent a 6-digit code to $_cleanEmail. It can take a minute — check Junk too.',
@@ -219,11 +289,39 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
     return _AuthFrame(
-      title: 'Sign in',
-      subtitle: 'Use your @$_domain college account. RideSync is only for VIT students — new accounts are created automatically.',
+      overline: _signup ? 'Join RideSync' : 'Welcome back',
+      title: _signup ? 'Create your account' : 'Log in to RideSync',
+      subtitle: 'Your campus. Your route. Your ride.',
       onBack: () => setState(() => (_landing = true, _error = null)),
       children: [
+        if (session.startupError != null) ...[
+          Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'),
+          const SizedBox(height: 8),
+          TextButton.icon(onPressed: session.refresh, icon: const Icon(Icons.refresh), label: const Text('Try again')),
+          const SizedBox(height: 8),
+        ],
+        if (_error != null) ...[Notice(_error!, tone: 'error'), const SizedBox(height: 16)],
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          textInputAction: TextInputAction.go,
+          decoration: InputDecoration(labelText: 'VIT email', hintText: 'firstname.lastname@$_domain', prefixIcon: const Icon(Icons.mail_outline)),
+          onSubmitted: (_) => _sendCode(),
+        ),
+        const SizedBox(height: 12),
+        LoadingButton(label: _signup ? 'Create account' : 'Continue', icon: Icons.arrow_forward, loading: _busy, onPressed: cfg?.emailLogin == false ? null : _sendCode),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.verified_user_outlined, size: 16, color: RS.ink500),
+          const SizedBox(width: 8),
+          Expanded(child: Text('No password to remember. We email a 6-digit code to your @$_domain inbox each time you sign in.', style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4))),
+        ]),
         if (cfg?.microsoftLogin == true) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Row(children: [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or', style: TextStyle(color: RS.ink500, fontSize: 13))), Expanded(child: Divider())]),
+          ),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
@@ -238,32 +336,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ]),
                 ),
                 const SizedBox(width: 10),
-                const Text('Sign in with Microsoft'),
+                const Text('Continue with Microsoft (VIT Outlook)'),
               ]),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Row(children: [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('or get a code by email', style: TextStyle(color: RS.ink500, fontSize: 13))), Expanded(child: Divider())]),
-          ),
         ],
-        if (session.startupError != null) ...[
-          Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'),
-          const SizedBox(height: 8),
-          TextButton.icon(onPressed: session.refresh, icon: const Icon(Icons.refresh), label: const Text('Try again')),
-          const SizedBox(height: 8),
-        ],
-        if (_error != null) ...[Notice(_error!, tone: 'error'), const SizedBox(height: 16)],
-        TextField(
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          autocorrect: false,
-          textInputAction: TextInputAction.go,
-          decoration: InputDecoration(labelText: 'College email', hintText: 'firstname.lastname@$_domain', prefixIcon: const Icon(Icons.mail_outline)),
-          onSubmitted: (_) => _sendCode(),
-        ),
-        const SizedBox(height: 20),
-        LoadingButton(label: 'Get login code', icon: Icons.arrow_forward, loading: _busy, onPressed: cfg?.emailLogin == false ? null : _sendCode),
         if (cfg?.devLogin == true) ...[
           const SizedBox(height: 24),
           const Notice('Testing server: you can sign in without a code.', tone: 'warning'),
@@ -271,14 +348,18 @@ class _LoginScreenState extends State<LoginScreen> {
           LoadingButton(label: 'Test sign-in (no code)', secondary: true, loading: _busy, onPressed: _devLogin),
         ],
         const SizedBox(height: 28),
-        Row(children: [
-          const Icon(Icons.verified_user_outlined, size: 18, color: RS.ink500),
-          const SizedBox(width: 8),
-          Expanded(child: Text('Only verified @$_domain accounts can use RideSync.', style: const TextStyle(color: RS.ink500, fontSize: 13))),
-        ]),
+        Center(
+          child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text(_signup ? 'Already on RideSync? ' : 'New to RideSync? ', style: const TextStyle(color: RS.ink500)),
+            GestureDetector(
+              onTap: () => setState(() => _signup = !_signup),
+              child: Text(_signup ? 'Log in' : 'Create account', style: const TextStyle(color: RS.primary, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
         if (!session.hasBuiltInServer) ...[
           const SizedBox(height: 12),
-          TextButton(onPressed: session.changeServer, child: Text('Server: ${session.server} · Change')),
+          Center(child: TextButton(onPressed: session.changeServer, child: Text('Server: ${session.server} · Change'))),
         ],
       ],
     );
@@ -317,7 +398,7 @@ extension on _LoginScreenState {
             ),
             const SizedBox(height: 22),
             if (session.startupError != null) ...[Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'), const SizedBox(height: 12)],
-            LoadingButton(label: 'Create account', onPressed: _openLogin),
+            LoadingButton(label: 'Create account', onPressed: _openSignup),
             const SizedBox(height: 10),
             LoadingButton(label: 'Log in', secondary: true, onPressed: _openLogin),
             const SizedBox(height: 10),

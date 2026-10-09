@@ -693,7 +693,7 @@ Future<void> _payWallet(BuildContext context, BookingDetail d, WalletInfo w) asy
 
 /* ---- Rating ---- */
 
-const ratingTags = ['On time', 'Safe driving', 'Friendly', 'Clean car', 'Easy pickup', 'Good music'];
+const ratingTags = ['Safe driving', 'Friendly', 'On time', 'Clean vehicle', 'Smooth ride'];
 const riderRatingTags = ['On time', 'Friendly', 'Easy pickup', 'Respectful', 'Paid promptly'];
 
 void showRateSheet(BuildContext context, String bookingId, String name, {String? photo, bool ratingDriver = true}) {
