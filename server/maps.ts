@@ -2,6 +2,7 @@ import type { Place } from '../src/lib/types'
 import { CAMPUS } from '../src/data/places'
 import { env } from './env'
 import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
+import { isHighway, olaConfigured, olaReverse, olaSearch, tomtomNearby } from './landmarks'
 import { tomtomConfigured } from './traffic'
 
 /**
@@ -48,7 +49,7 @@ export function mapsConfig() {
           url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
         },
-    search: google ? 'google' : maptiler() ? 'maptiler' : 'openstreetmap',
+    search: google ? 'google' : olaConfigured() ? 'ola' : maptiler() ? 'maptiler' : 'openstreetmap',
     routing: google ? 'google' : tomtomConfigured() ? 'tomtom' : env.orsKey ? 'openrouteservice' : 'osrm',
     /** Live traffic layer: tiles come from /api/traffic/{z}/{x}/{y}.png */
     traffic: tomtomConfigured(),
@@ -97,6 +98,17 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
       console.error('[ridesync] Google place search failed, using OpenStreetMap', (e as Error).message)
     }
   }
+  if (olaConfigured()) {
+    try {
+      places = await olaSearch(q, CAMPUS)
+      if (places.length) {
+        cache.set(key, { at: Date.now(), places })
+        return places
+      }
+    } catch (e) {
+      console.error('[ridesync] Ola Maps search failed, using the next service', (e as Error).message)
+    }
+  }
   if (maptiler()) {
     try {
       const data = await getJson<{ features: MTFeature[] }>(
@@ -126,16 +138,32 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
   return places
 }
 
-/** "NH 48", "Western Express Highway", "SH-1"… — not useful as a pickup name. */
-const isHighway = (name: string) => /\b(N\.?H\.?|S\.?H\.?)[\s-]*\d+|national highway|state highway|expressway|highway|flyover|bypass/i.test(name)
 
 /** Coordinates for a Google suggestion the student picked. */
 export async function resolvePlace(placeId: string, sessionToken?: string): Promise<Place> {
   return googlePlaceDetails(placeId, sessionToken)
 }
 
-/** Human-readable name for coordinates ("Current location" → "Near Dadar TT Circle"). */
+const names = new Map<string, { at: number; r: { name: string; area: string } }>()
+
+/**
+ * Human-readable name for coordinates, best first:
+ * Google → Ola Maps → TomTom nearby places → MapTiler → OpenStreetMap.
+ * Results are kept for a day per ~1 m spot so dragging the pin back doesn't use quota.
+ */
 export async function reverseGeocode(lat: number, lng: number): Promise<{ name: string; area: string } | null> {
+  const k = `${lat.toFixed(5)},${lng.toFixed(5)}`
+  const hit = names.get(k)
+  if (hit && Date.now() - hit.at < 86_400_000) return hit.r
+  const r = await lookupName(lat, lng)
+  if (r) {
+    if (names.size > 5000) names.clear()
+    names.set(k, { at: Date.now(), r })
+  }
+  return r
+}
+
+async function lookupName(lat: number, lng: number): Promise<{ name: string; area: string } | null> {
   if (googleConfigured()) {
     try {
       const r = await googleReverse(lat, lng)
@@ -144,6 +172,12 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ name: 
       console.error('[ridesync] Google place name failed, using OpenStreetMap', (e as Error).message)
     }
   }
+  if (olaConfigured()) {
+    const r = await olaReverse(lat, lng)
+    if (r) return r
+  }
+  const tt = await tomtomNearby(lat, lng)
+  if (tt) return tt
   if (maptiler()) {
     try {
       const data = await getJson<{ features: (MTFeature & { place_type?: string[] })[] }>(

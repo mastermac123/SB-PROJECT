@@ -1,11 +1,11 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { LocateFixed, MapPin } from 'lucide-react'
+import { Check, LocateFixed, MapPin, Pencil } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { CAMPUS } from '@/data/places'
 import type { Place } from '@/lib/types'
 import { ApiError, locatePrecise, reversePlace, useConfig } from '@/services/api'
-import { Button, IconButton, Notice, cx } from './ui'
+import { Button, Field, IconButton, Notice, cx } from './ui'
 
 const CARTO_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
 
@@ -35,6 +35,9 @@ export function PinPicker({
   const [named, setNamed] = useState<{ name: string; area: string } | null>(null)
   const [locating, setLocating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The student's own name for the spot ("Shanti Niwas, Gate 2") when the map doesn't know it.
+  const [custom, setCustom] = useState('')
+  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     if (!el.current) return
@@ -107,16 +110,35 @@ export function PinPicker({
       <div className="row gap-2" style={{ alignItems: 'flex-start' }}>
         <MapPin style={{ color: 'var(--primary-600)', flexShrink: 0 }} />
         <div className="grow" style={{ minWidth: 0 }}>
-          {moving || !named ? (
+          {editing ? (
+            <Field
+              autoFocus
+              quiet
+              aria-label="Name of this place"
+              placeholder="e.g. Shanti Niwas, Gate 2"
+              value={custom}
+              maxLength={80}
+              onChange={(e) => setCustom(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && setEditing(false)}
+            />
+          ) : moving || !named ? (
             <span className="t-muted">Finding this place…</span>
           ) : (
             <>
-              <div style={{ fontWeight: 600 }}>{named.name}</div>
-              {named.area && <div className="t-sm t-muted">{named.area}</div>}
+              <div style={{ fontWeight: 600 }}>{custom.trim() || named.name}</div>
+              <div className="t-sm t-muted">{custom.trim() ? [named.name, named.area].filter(Boolean).join(', ') : named.area}</div>
             </>
           )}
         </div>
+        <IconButton
+          type="button"
+          label={editing ? 'Done' : 'Edit name'}
+          onClick={() => setEditing((v) => !v)}
+        >
+          {editing ? <Check /> : <Pencil />}
+        </IconButton>
       </div>
+      {!editing && !custom && named && !moving && <p className="t-caption t-muted" style={{ marginTop: -8 }}>Wrong name? Tap the pencil to type your building or gate.</p>}
       {accuracy !== undefined && accuracy > 50 && (
         <Notice tone="warning" icon={<LocateFixed />}>
           Your location is only accurate to about {Math.round(accuracy)} m (laptops use Wi-Fi, not GPS). Drag the map so the pin sits on your exact spot.
@@ -125,13 +147,13 @@ export function PinPicker({
       {error && <Notice tone="warning">{error}</Notice>}
       <Button
         block
-        disabled={moving || !named}
+        disabled={moving || (!named && !custom.trim())}
         onClick={() =>
-          named &&
+          (named || custom.trim()) &&
           onConfirm({
             id: `pin-${center.lat.toFixed(5)},${center.lng.toFixed(5)}`,
-            name: named.name,
-            area: named.area,
+            name: custom.trim() || named!.name,
+            area: custom.trim() ? [named?.name, named?.area].filter(Boolean).join(', ').slice(0, 200) : named!.area,
             lat: center.lat,
             lng: center.lng,
             kind: 'custom',

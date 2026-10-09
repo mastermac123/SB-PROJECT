@@ -28,6 +28,7 @@ app.listen(env.port, () => {
     if (r === 'rejected') console.log('[ridesync] ⚠ TomTom rejected TOMTOM_KEY — routes use OSRM without live traffic. Copy the key again from developer.tomtom.com and run setup.bat.')
     if (r === 'none') console.log('[ridesync] Live traffic off — add a free TomTom key with setup.bat (see README "Live traffic")')
   })
+  console.log(`[ridesync] pin names: ${[env.google.key && 'Google', env.olaKey && 'Ola Maps', env.tomtomKey && 'TomTom places', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
   const g = !!env.google.key
   console.log(
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,

@@ -60,6 +60,8 @@ export const env = {
   maptilerKey: process.env.MAPTILER_KEY || '',
   /** Optional: TomTom key for live traffic in routes, ETAs and the map (free at developer.tomtom.com). */
   tomtomKey: (process.env.TOMTOM_KEY || '').trim(),
+  /** Optional: Ola Maps key for Indian building/society names and search (maps.olakrutrim.com). */
+  olaKey: (process.env.OLA_MAPS_KEY || '').trim(),
   /**
    * Optional: Google Maps Platform. One key turns on Google place search, place names
    * and driving routes (server side) and the Google map (browser side).

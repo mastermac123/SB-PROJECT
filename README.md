@@ -188,6 +188,19 @@ How RideSync saves on Google usage:
 
 The terminal shows which map services are active when RideSync starts.
 
+### Building names when you drop a pin
+
+When a student drags the pin onto a building, RideSync asks these services in order and uses the first real name it gets. Road names like "NH 48" are skipped.
+
+1. **Google**, if you add a Google key
+2. **Ola Maps** (`OLA_MAPS_KEY`): the best for Indian housing societies, towers and gates. Sign up at https://maps.olakrutrim.com, create an app, then paste its API key into setup.bat. It also improves place search.
+3. **TomTom nearby places**: colleges, hospitals, malls and shops within 60 m. It uses the same `TOMTOM_KEY` as live traffic.
+4. **MapTiler**, then **OpenStreetMap**
+
+If no service knows the building, students tap the **pencil** on the pin screen and type it, e.g. "Shanti Niwas, Gate 2". The map's own name for the spot is kept underneath so the driver can still find it.
+
+The start.bat window shows the order in use, e.g. `pin names: Ola Maps → TomTom places → MapTiler → OpenStreetMap`.
+
 ### Live traffic (free)
 
 Add a free **TomTom** key to get real traffic, like Ola/Uber:
@@ -351,7 +364,7 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 49 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
+npm test          # 53 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds, webhooks and Google Maps
 npm run typecheck
 ```
 

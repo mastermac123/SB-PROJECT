@@ -62,6 +62,13 @@ class _PinPickerState extends State<_PinPicker> {
   int _seq = 0;
   final _osm = fm.MapController();
   gm.GoogleMapController? _g;
+  // The student's own name for the spot ("Shanti Niwas, Gate 2") when the map doesn't know it.
+  final _custom = TextEditingController();
+  bool _editing = false;
+  String get _typed => _custom.text.trim();
+
+  /// Under a typed name, show what the map calls the spot so the driver can still find it.
+  String get _subtitle => _typed.isEmpty ? _area : [_name, _area].where((x) => x != null && x.isNotEmpty).join(', ');
 
   @override
   void initState() {
@@ -114,6 +121,7 @@ class _PinPickerState extends State<_PinPicker> {
   void dispose() {
     _debounce?.cancel();
     _g?.dispose();
+    _custom.dispose();
     super.dispose();
   }
 
@@ -233,19 +241,40 @@ class _PinPickerState extends State<_PinPicker> {
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    child: _moving || _naming
-                        ? const Align(key: ValueKey('busy'), alignment: Alignment.centerLeft, child: Text('Finding this place…', style: TextStyle(color: RS.ink500)))
-                        : Column(
-                            key: ValueKey(_name),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_name ?? 'Pinned location', style: RS.heading(17), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              if (_area.isNotEmpty) Text(_area, style: const TextStyle(color: RS.ink500, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
+                    child: _editing
+                        ? TextField(
+                            key: const ValueKey('edit'),
+                            controller: _custom,
+                            autofocus: true,
+                            maxLength: 80,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(hintText: 'e.g. Shanti Niwas, Gate 2', counterText: '', isDense: true),
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (_) => setState(() => _editing = false),
+                          )
+                        : _moving || _naming
+                            ? const Align(key: ValueKey('busy'), alignment: Alignment.centerLeft, child: Text('Finding this place…', style: TextStyle(color: RS.ink500)))
+                            : Column(
+                                key: ValueKey('$_name$_typed'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_typed.isNotEmpty ? _typed : (_name ?? 'Pinned location'), style: RS.heading(17), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  if (_subtitle.isNotEmpty) Text(_subtitle, style: const TextStyle(color: RS.ink500, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
                   ),
                 ),
+                IconButton(
+                  tooltip: _editing ? 'Done' : 'Edit name',
+                  icon: Icon(_editing ? Icons.check : Icons.edit_outlined, color: RS.ink700),
+                  onPressed: () => setState(() => _editing = !_editing),
+                ),
               ]),
+              if (!_editing && _typed.isEmpty && !_moving && !_naming)
+                const Padding(
+                  padding: EdgeInsets.only(left: 34),
+                  child: Text('Wrong name? Tap the pencil to type your building or gate.', style: TextStyle(color: RS.ink500, fontSize: 12)),
+                ),
               if (_accuracy != null && _accuracy! > 50) ...[
                 const SizedBox(height: 10),
                 Notice('Your GPS is only accurate to about ${_accuracy!.round()} m here. Drag the map so the pin sits on your exact spot.', tone: 'warning'),
@@ -253,14 +282,14 @@ class _PinPickerState extends State<_PinPicker> {
               const SizedBox(height: 14),
               LoadingButton(
                 label: 'Confirm ${widget.title.toLowerCase()}',
-                onPressed: _moving || _naming || _name == null
+                onPressed: _moving || (_naming && _typed.isEmpty) || (_name == null && _typed.isEmpty)
                     ? null
                     : () => Navigator.pop(
                           context,
                           Place(
                             id: 'pin-${_center.lat.toStringAsFixed(5)},${_center.lng.toStringAsFixed(5)}',
-                            name: _name!,
-                            area: _area,
+                            name: _typed.isNotEmpty ? _typed : _name!,
+                            area: _subtitle.length > 200 ? _subtitle.substring(0, 200) : _subtitle,
                             lat: _center.lat,
                             lng: _center.lng,
                             kind: 'custom',

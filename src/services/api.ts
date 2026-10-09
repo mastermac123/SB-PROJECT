@@ -260,7 +260,7 @@ export type AppConfig = {
     tiles: { url: string; attribution: string }
     /** Set when the server has a Google Maps key and the Google map is turned on. */
     google: { browserKey: string } | null
-    search: 'google' | 'maptiler' | 'openstreetmap'
+    search: 'google' | 'ola' | 'maptiler' | 'openstreetmap'
     routing: 'google' | 'tomtom' | 'openrouteservice' | 'osrm'
     /** Live traffic layer available at /api/traffic/{z}/{x}/{y}.png */
     traffic?: boolean

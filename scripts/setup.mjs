@@ -189,6 +189,26 @@ if (await yes('Add free map keys instead (MapTiler for maps & search, OpenRouteS
   save()
 }
 
+/* ---- Ola Maps (Indian building names) ------------------------------------------ */
+if (await yes('Add Ola Maps (best names for Indian buildings, societies and gates when you drop a pin)?')) {
+  console.log('\n  maps.olakrutrim.com → Sign up → create a project/app → copy its API key.\n')
+  const ola = (await ask('Ola Maps API key', env.get('OLA_MAPS_KEY'))).trim()
+  if (ola) {
+    env.set('OLA_MAPS_KEY', ola)
+    save()
+    process.stdout.write('  Checking key… ')
+    try {
+      const r = await fetch(`https://api.olamaps.io/places/v1/reverse-geocode?latlng=19.0222,72.8711&api_key=${encodeURIComponent(ola)}`, { headers: { 'X-Request-Id': 'ridesync-setup' } })
+      if (r.ok) {
+        const j = await r.json()
+        console.log(`works ✓ (VIT campus spot: "${(j.results?.[0]?.formatted_address ?? '').split(',').slice(0, 2).join(',')}")\n`)
+      } else console.log(`Ola Maps said ${r.status} — copy the key again from maps.olakrutrim.com.\n`)
+    } catch {
+      console.log('couldn’t reach Ola Maps (check internet).\n')
+    }
+  }
+}
+
 /* ---- Live traffic ------------------------------------------------------------ */
 if (await yes('Add live traffic (free TomTom key — real traffic in ETAs, routes and on the map)?')) {
   console.log('\n  developer.tomtom.com → Register (free, no card) → Dashboard → Keys → copy the default key ("My first API key").\n')
