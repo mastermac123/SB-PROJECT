@@ -1,8 +1,23 @@
 /** Server configuration — all from environment variables. See .env.example. */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+/** Where settings came from, for the startup message. */
+export const envFile = { path: resolve('.env'), found: existsSync('.env'), error: '' }
 
 // Load .env when present (values already set in the environment win).
-if (existsSync('.env')) process.loadEnvFile('.env')
+// If Node's strict parser rejects the file, read it line by line instead of silently ignoring it.
+if (envFile.found) {
+  try {
+    process.loadEnvFile('.env')
+  } catch (e) {
+    envFile.error = (e as Error).message
+    for (const line of readFileSync('.env', 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/)
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1').replace(/\\"/g, '"')
+    }
+  }
+}
 process.env.TZ = process.env.TZ || 'Asia/Kolkata'
 
 const bool = (v: string | undefined) => v === '1' || v === 'true'

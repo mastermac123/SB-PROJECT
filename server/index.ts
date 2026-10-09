@@ -2,14 +2,20 @@ import { createApp, env } from './app'
 import { verifyMail } from './mail'
 import { checkMapTiler } from './maps'
 import { razorpayConfigured } from './env'
-import { microsoftConfigured, anyMailConfigured } from './env'
+import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
 const app = createApp()
 app.listen(env.port, () => {
   console.log(`[ridesync] API listening on http://localhost:${env.port}`)
+  console.log(envFile.found ? `[ridesync] settings: ${envFile.path}` : `[ridesync] ⚠ No settings file (.env) in ${process.cwd()} — run setup.bat in THIS folder to set up email, payments and maps.`)
+  if (envFile.error) console.log(`[ridesync] ⚠ .env has a formatting problem (${envFile.error}) — read it line by line instead. Run setup.bat again to rewrite it.`)
   console.log(`[ridesync] sign-in restricted to @${env.allowedDomain}`)
   if (!microsoftConfigured()) console.log('[ridesync] Microsoft sign-in not set up yet — see README section 2 (email codes still work)')
-  if (!anyMailConfigured()) console.log(env.isProd ? '[ridesync] SMTP not set — email-code login disabled' : '[ridesync] SMTP not set — login codes are printed here (dev only)')
+  if (!anyMailConfigured()) {
+    const missing = (['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM'] as const).filter((k) => !process.env[k])
+    console.log(env.isProd ? '[ridesync] SMTP not set — email-code login disabled' : '[ridesync] SMTP not set — login codes are printed here (dev only)')
+    if (envFile.found) console.log(`[ridesync] ⚠ Email is off because .env is missing: ${missing.join(', ')}. Run setup.bat, answer y to the email question and enter the Gmail App Password.`)
+  }
   if (anyMailConfigured()) void verifyMail()
   console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] Razorpay not set — riders pay by UPI to the driver or cash')
   void checkMapTiler().then((r) => {
