@@ -7,17 +7,24 @@ import { glide } from '@/lib/glide'
 import { googleMapsFailed, onGoogleMapsFailed } from './googleLoader'
 
 const GoogleMap = lazy(() => import('./GoogleMap'))
+const VectorMap = lazy(() => import('./VectorMap'))
+
+// Once the vector map fails on this device (no WebGL, style blocked), use the simple map for the session.
+let vectorFailed = false
 
 const CARTO_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
 
 export type MapMarker = {
   id: string
   at: LatLng
-  kind: 'pickup' | 'drop' | 'me' | 'car'
+  /** eta = a time bubble sitting on the route ("21 min · Light traffic"). */
+  kind: 'pickup' | 'drop' | 'me' | 'car' | 'eta'
   label?: string
   sublabel?: string
   heading?: number
   darkLabel?: boolean
+  /** Traffic colour for an eta bubble. */
+  tone?: 'light' | 'moderate' | 'heavy'
 }
 
 export type MapRoute = { id: string; coords: LatLng[]; kind?: 'primary' | 'alt' | 'muted' }
@@ -32,6 +39,12 @@ export function markerHtml(m: MapMarker): { html: string; size: number } {
   const label = m.label
     ? `<span class="mk-label${m.darkLabel ? ' mk-label--dark' : ''}">${escape(m.label)}${m.sublabel ? `<small>${escape(m.sublabel)}</small>` : ''}</span>`
     : ''
+  if (m.kind === 'eta') {
+    return {
+      html: `<div class="mk-eta${m.tone ? ` mk-eta--${m.tone}` : ''}"><strong>${escape(m.label ?? '')}</strong>${m.sublabel ? `<span><i></i>${escape(m.sublabel)}</span>` : ''}</div>`,
+      size: 0,
+    }
+  }
   if (m.kind === 'car') {
     return {
       html: `<div class="mk-car"><span class="mk-car__arrow" style="display:grid;transform:rotate(${m.heading ?? 0}deg);transition:transform 300ms">${CAR_SVG}</span></div>${label}`,
@@ -69,19 +82,36 @@ export type MapViewProps = {
 }
 
 /**
- * Map surface. Google Maps when the server has a Google key, otherwise Leaflet with
- * OpenStreetMap tiles. If Google fails to load (bad key, quota), it switches to Leaflet.
+ * Map surface: Google Maps when the server has a Google key; otherwise a vector map with
+ * 3D buildings (MapLibre); the simple Leaflet map if neither can load on this device.
  */
 export function MapView(props: MapViewProps) {
   const config = useConfig().data
   const [failed, setFailed] = useState(googleMapsFailed)
   useEffect(() => onGoogleMapsFailed(() => setFailed(true)), [])
+  const [vectorOff, setVectorOff] = useState(vectorFailed)
   const google = config?.maps?.google
   if (!config) return <MapShell />
   if (google && !failed) {
     return (
       <Suspense fallback={<MapShell />}>
         <GoogleMap {...props} browserKey={google.browserKey} />
+      </Suspense>
+    )
+  }
+  const style = config.maps?.vectorStyle
+  if (style && !vectorOff) {
+    return (
+      <Suspense fallback={<MapShell />}>
+        <VectorMap
+          {...props}
+          styleUrl={style}
+          traffic={config.maps?.traffic}
+          onFail={() => {
+            vectorFailed = true
+            setVectorOff(true)
+          }}
+        />
       </Suspense>
     )
   }

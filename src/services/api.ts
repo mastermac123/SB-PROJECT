@@ -264,6 +264,8 @@ export type AppConfig = {
     routing: 'google' | 'tomtom' | 'openrouteservice' | 'osrm'
     /** Live traffic layer available at /api/traffic/{z}/{x}/{y}.png */
     traffic?: boolean
+    /** Vector map style (MapTiler with a key, else OpenFreeMap). */
+    vectorStyle?: string
   }
 }
 

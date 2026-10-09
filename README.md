@@ -201,6 +201,16 @@ If no service knows the building, students tap the **pencil** on the pin screen 
 
 The start.bat window shows the order in use, e.g. `pin names: Ola Maps → TomTom places → MapTiler → OpenStreetMap`.
 
+### The map
+
+The website uses a **vector map with 3D buildings**: it stays sharp at every zoom and can be tilted with the **3D** button. It uses your MapTiler key, or the free OpenFreeMap map without one. If a computer can't show it (old browser, no graphics support), RideSync switches to the simple map automatically.
+
+Trip details are shown **on the map**, like Ola and Uber:
+
+- a time bubble on the route, e.g. "21 min · Light traffic"
+- the departure time on the start pin
+- the expected arrival time on the destination pin
+
 ### Live traffic (free)
 
 Add a free **TomTom** key to get real traffic, like Ola/Uber:

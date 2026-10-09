@@ -300,9 +300,18 @@ class _TripView extends StatelessWidget {
         route: ride.route,
         follow: live ? carPoint : null,
         pins: [
-          MapPin(b.pickup.point, 'pickup', label: b.pickup.name),
-          MapPin(b.drop.point, 'drop', label: b.drop.name),
+          MapPin(b.pickup.point, 'pickup', label: b.pickup.name, sublabel: b.status == 'driver_arriving' && eta != null ? '${detail.driver.firstName} in $eta min' : null),
+          MapPin(b.drop.point, 'drop', label: b.drop.name, sublabel: b.status == 'in_progress' && eta != null ? 'Arrive ~${timeOf(DateTime.now().add(Duration(minutes: eta)))}' : null),
           if (carPoint != null && live) MapPin(carPoint, 'car', heading: car!.heading),
+          // Time bubble between the car and where it's heading.
+          if (carPoint != null && eta != null && traffic != null)
+            MapPin(
+              LatLngPoint((carPoint.lat + (b.status == 'in_progress' ? b.drop : b.pickup).lat) / 2, (carPoint.lng + (b.status == 'in_progress' ? b.drop : b.pickup).lng) / 2),
+              'eta',
+              label: '$eta min',
+              sublabel: traffic == 'light' ? 'Light traffic' : '+${liveEta!.delay} min traffic',
+              tone: traffic,
+            ),
         ],
       ),
       header: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

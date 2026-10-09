@@ -264,10 +264,25 @@ class _DriveScreenState extends State<DriveScreen> {
 
   Widget _body(BuildContext context, RideDetail d) {
     final ride = d.ride;
+    final me = _pos == null ? null : LatLngPoint(_pos!.latitude, _pos!.longitude);
+    final upcoming = ride.status == 'scheduled' || ride.status == 'in_progress';
+    return TripEtaBuilder(
+      from: me ?? ride.origin.point,
+      to: ride.destination.point,
+      departAt: ride.departAt,
+      plannedMin: ride.durationMin,
+      distanceKm: ride.distanceKm,
+      live: ride.status == 'in_progress',
+      builder: (context, eta) => _sheet(context, d, me, upcoming ? eta : null),
+    );
+  }
+
+  Widget _sheet(BuildContext context, RideDetail d, LatLngPoint? me, TripEta? eta) {
+    final ride = d.ride;
     final api = context.read<Session>().api;
     final pending = d.bookings.where((b) => b.booking.status == 'pending').toList();
     final riders = d.bookings.where((b) => const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].contains(b.booking.status)).toList();
-    final me = _pos == null ? null : LatLngPoint(_pos!.latitude, _pos!.longitude);
+    final bubble = eta == null ? null : etaPin(ride.route, eta);
     return MapSheetScaffold(
       initialSize: ride.status == 'in_progress' ? 0.42 : 0.55,
       minSize: 0.28,
@@ -278,8 +293,9 @@ class _DriveScreenState extends State<DriveScreen> {
         route: ride.route,
         follow: ride.status == 'in_progress' ? me : null,
         pins: [
-          MapPin(ride.origin.point, 'pickup', label: ride.origin.name),
-          MapPin(ride.destination.point, 'drop', label: ride.destination.name),
+          MapPin(ride.origin.point, 'pickup', label: ride.origin.name, sublabel: 'Leave ${timeOf(ride.departAt)}'),
+          MapPin(ride.destination.point, 'drop', label: ride.destination.name, sublabel: eta == null ? null : 'Arrive ~${timeOf(eta.arrive)}'),
+          ?bubble,
           for (final r in riders.where((r) => r.booking.isActive)) MapPin(r.booking.pickup.point, 'me', label: '${r.rider.firstName}’s pickup'),
           if (me != null) MapPin(me, 'car', heading: _pos!.heading),
         ],
@@ -290,11 +306,7 @@ class _DriveScreenState extends State<DriveScreen> {
             Pill.status(ride.status == 'scheduled' ? 'confirmed' : ride.status, switch (ride.status) { 'scheduled' => 'Scheduled', 'in_progress' => 'On the road', 'completed' => 'Completed', _ => 'Cancelled' }),
           ]),
           const SizedBox(height: 12),
-          Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))))),
-          if (ride.status == 'scheduled' || ride.status == 'in_progress') ...[
-            const SizedBox(height: 10),
-            TripTime(from: me ?? ride.origin.point, to: ride.destination.point, departAt: ride.departAt, plannedMin: ride.durationMin, distanceKm: ride.distanceKm, live: ride.status == 'in_progress'),
-          ],
+          Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: eta == null ? timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))) : '~${timeOf(eta.arrive)}')),
           const SizedBox(height: 8),
           Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${money(ride.farePerSeat)} per seat', style: const TextStyle(color: RS.ink500)),
           if (ride.status == 'in_progress') ...[

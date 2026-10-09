@@ -1,14 +1,17 @@
-import { Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { duration, time } from '@/lib/format'
+import { haversineKm } from '@/lib/geo'
 import type { LatLng } from '@/lib/types'
 import { liveEta, type LiveEta } from '@/services/api'
+import type { MapMarker } from './MapView'
+
+type TripEtaInput = { from: LatLng; to: LatLng; departAt: string; plannedMin: number; distanceKm: number; live?: boolean }
+export type TripEta = { minutes: number; km: number; arrive: Date; traffic: LiveEta['traffic']; delay: number }
 
 /**
- * "48 min · 22 km · arrive 5:03 AM", plus live traffic ("Heavy traffic now · +8 min")
- * when the trip starts within 90 minutes or is under way. Refreshes every 2 minutes.
+ * Trip time and arrival, with live traffic when the trip starts within 90 minutes or is
+ * under way (refreshed every 2 minutes). Falls back to the planned route time.
  */
-export function TripTime({ from, to, departAt, plannedMin, distanceKm, live }: { from: LatLng; to: LatLng; departAt: string; plannedMin: number; distanceKm: number; live?: boolean }) {
+export function useTripEta({ from, to, departAt, plannedMin, distanceKm, live }: TripEtaInput): TripEta {
   const soon = live || new Date(departAt).getTime() - Date.now() < 90 * 60_000
   const [eta, setEta] = useState<LiveEta | null>(null)
   // ~1 km steps for a moving car, so live GPS doesn't trigger a lookup on every update.
@@ -31,23 +34,44 @@ export function TripTime({ from, to, departAt, plannedMin, distanceKm, live }: {
   }, [key, soon])
 
   const minutes = eta?.durationMin ?? plannedMin
-  const start = Math.max(Date.now(), new Date(departAt).getTime())
-  const arrive = new Date((live ? Date.now() : start) + minutes * 60_000)
-  const tone = eta?.traffic === 'heavy' ? 'var(--error-600)' : eta?.traffic === 'moderate' ? 'var(--warning-600)' : 'var(--success-600)'
+  const start = live ? Date.now() : Math.max(Date.now(), new Date(departAt).getTime())
+  return { minutes, km: eta?.distanceKm ?? distanceKm, arrive: new Date(start + minutes * 60_000), traffic: eta?.traffic ?? null, delay: eta?.trafficDelayMin ?? 0 }
+}
 
-  return (
-    <div className="stack gap-1">
-      <span className="row gap-2 t-body">
-        <Clock size={16} style={{ color: 'var(--ink-500)' }} />
-        <span>
-          <strong>{duration(minutes)}</strong> · {Math.round(eta?.distanceKm ?? distanceKm)} km · arrive ~{time(arrive)}
-        </span>
-      </span>
-      {eta?.traffic && (
-        <span className="t-sm" style={{ color: tone, paddingLeft: 24, fontWeight: 600 }}>
-          {eta.traffic === 'light' ? 'Light traffic now · live' : `${eta.traffic === 'heavy' ? 'Heavy' : 'Some'} traffic now · +${eta.trafficDelayMin} min · live`}
-        </span>
-      )}
-    </div>
-  )
+/** The point `frac` of the way along a route (by distance). */
+export function pointAlong(coords: LatLng[], frac = 0.5): LatLng | null {
+  if (coords.length === 0) return null
+  if (coords.length === 1) return coords[0]
+  const seg: number[] = []
+  let total = 0
+  for (let i = 1; i < coords.length; i++) {
+    const d = haversineKm(coords[i - 1], coords[i])
+    seg.push(d)
+    total += d
+  }
+  let want = total * frac
+  for (let i = 0; i < seg.length; i++) {
+    if (want <= seg[i] || i === seg.length - 1) {
+      const k = seg[i] ? Math.min(1, want / seg[i]) : 0
+      return { lat: coords[i].lat + (coords[i + 1].lat - coords[i].lat) * k, lng: coords[i].lng + (coords[i + 1].lng - coords[i].lng) * k }
+    }
+    want -= seg[i]
+  }
+  return coords.at(-1)!
+}
+
+const durationShort = (min: number) => (min < 60 ? `${Math.max(1, Math.round(min))} min` : `${Math.floor(min / 60)} h ${Math.round(min % 60)} min`)
+
+/** The time bubble shown on the route: "21 min" + "Light traffic" / "+8 min traffic" / "10 km". */
+export function etaBubble(route: LatLng[], eta: TripEta, at?: LatLng | null): MapMarker | null {
+  const p = at ?? pointAlong(route, 0.5)
+  if (!p) return null
+  return {
+    id: 'eta',
+    kind: 'eta',
+    at: p,
+    label: durationShort(eta.minutes),
+    sublabel: eta.traffic === 'light' ? `Light traffic · ${Math.round(eta.km)} km` : eta.traffic ? `+${eta.delay} min traffic` : `${Math.round(eta.km)} km`,
+    tone: eta.traffic ?? undefined,
+  }
 }

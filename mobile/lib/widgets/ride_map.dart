@@ -20,10 +20,74 @@ const useGoogleMaps = bool.fromEnvironment('GOOGLE_MAPS');
 
 class MapPin {
   final LatLngPoint at;
-  final String kind; // pickup | drop | car | me
+  final String kind; // pickup | drop | car | me | eta (time bubble on the route)
   final String? label;
+  final String? sublabel;
   final double? heading;
-  const MapPin(this.at, this.kind, {this.label, this.heading});
+
+  /// Traffic colour for an eta bubble: light | moderate | heavy.
+  final String? tone;
+  const MapPin(this.at, this.kind, {this.label, this.sublabel, this.heading, this.tone});
+}
+
+/// Label card above a pin ("BKC · Arrive ~4:36 AM").
+class _PinLabel extends StatelessWidget {
+  const _PinLabel(this.pin);
+  final MapPin pin;
+  @override
+  Widget build(BuildContext context) {
+    final dark = pin.kind == 'pickup';
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(9, 5, 9, 6),
+        decoration: BoxDecoration(
+          color: dark ? RS.ink900 : Colors.white,
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: const [BoxShadow(color: Color(0x2915182E), blurRadius: 10, offset: Offset(0, 3))],
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(pin.label!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: dark ? Colors.white : RS.ink900, fontWeight: FontWeight.w700, fontSize: 11.5)),
+          if (pin.sublabel != null) Text(pin.sublabel!, maxLines: 1, style: TextStyle(color: dark ? Colors.white70 : RS.ink500, fontWeight: FontWeight.w500, fontSize: 10.5)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Dark time bubble with a pointer, sitting on the route.
+class _EtaBubble extends StatelessWidget {
+  const _EtaBubble(this.pin);
+  final MapPin pin;
+  @override
+  Widget build(BuildContext context) {
+    final dot = switch (pin.tone) { 'light' => const Color(0xFF34D27B), 'moderate' => const Color(0xFFFFB020), 'heavy' => const Color(0xFFFF5A5F), _ => const Color(0xFF9AA0B8) };
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.85, end: 1),
+      duration: const Duration(milliseconds: 380),
+      curve: Curves.easeOutBack,
+      builder: (_, s, child) => Transform.scale(scale: s, alignment: Alignment.bottomCenter, child: child),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(11, 7, 11, 8),
+            decoration: BoxDecoration(color: RS.ink900, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Color(0x4715182E), blurRadius: 14, offset: Offset(0, 5))]),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(pin.label ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15, height: 1.1)),
+              if (pin.sublabel != null)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text(pin.sublabel!, style: const TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w500)),
+                ]),
+            ]),
+          ),
+          Transform.translate(offset: const Offset(0, -5), child: Transform.rotate(angle: math.pi / 4, child: Container(width: 10, height: 10, color: RS.ink900))),
+        ]),
+      ),
+    );
+  }
 }
 
 /// The ride map, Ola/Uber style: the route draws itself, the pickup pulses and the
@@ -299,7 +363,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     final pulseT = _gPulse.value;
     final markers = <gm.Marker>{
       for (final (i, p) in widget.pins.indexed)
-        if (p.kind != 'car')
+        if (p.kind != 'car' && p.kind != 'eta')
           gm.Marker(
             markerId: gm.MarkerId('$i-${p.kind}'),
             position: gm.LatLng(p.at.lat, p.at.lng),
@@ -452,7 +516,13 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
               ),
             ),
           for (final p in widget.pins)
-            if (p.kind != 'car') fm.Marker(point: ll.LatLng(p.at.lat, p.at.lng), width: 20, height: 20, child: _marker(p)),
+            if (p.kind != 'car' && p.kind != 'eta') fm.Marker(point: ll.LatLng(p.at.lat, p.at.lng), width: 20, height: 20, child: _marker(p)),
+          // Labels above pins, and the time bubble on the route.
+          for (final p in widget.pins)
+            if (p.label != null && (p.kind == 'pickup' || p.kind == 'drop'))
+              fm.Marker(point: ll.LatLng(p.at.lat, p.at.lng), width: 170, height: 76, alignment: Alignment.topCenter, child: Padding(padding: const EdgeInsets.only(bottom: 16), child: _PinLabel(p))),
+          for (final p in widget.pins)
+            if (p.kind == 'eta') fm.Marker(point: ll.LatLng(p.at.lat, p.at.lng), width: 160, height: 64, alignment: Alignment.topCenter, child: _EtaBubble(p)),
           if (carAt != null) fm.Marker(point: ll.LatLng(carAt.lat, carAt.lng), width: 38, height: 38, child: _marker(const MapPin(LatLngPoint(0, 0), 'car'), heading: _headingShown)),
         ]),
         fm.SimpleAttributionWidget(source: Text(credit)),

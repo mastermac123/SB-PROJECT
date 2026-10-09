@@ -10,7 +10,7 @@ import { useToast } from '@/components/Toast'
 import { Avatar, Button, Chip, IconButton, ListRow, Plate, Rating, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop, useNow } from '@/hooks'
 import { haversineKm, projectOnPolyline } from '@/lib/geo'
-import { firstName, money, relative } from '@/lib/format'
+import { firstName, money, relative, time } from '@/lib/format'
 import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
@@ -107,8 +107,11 @@ export function LiveRide() {
   }
 
   const markers: MapMarker[] = [
-    { id: 'pick', at: booking.pickup, kind: 'pickup', label: booking.status === 'in_progress' ? undefined : 'Pickup' },
-    { id: 'drop', at: booking.drop, kind: 'drop', label: booking.drop.name },
+    { id: 'pick', at: booking.pickup, kind: 'pickup', label: booking.status === 'in_progress' ? undefined : 'Pickup', sublabel: booking.status === 'driver_arriving' && eta ? `${name} in ${eta} min` : undefined, darkLabel: true },
+    { id: 'drop', at: booking.drop, kind: 'drop', label: booking.drop.name, sublabel: booking.status === 'in_progress' && eta ? `Arrive ~${time(new Date(Date.now() + eta * 60_000))}` : undefined },
+    ...(loc && eta && etaInfo?.traffic && booking.status !== 'driver_arrived'
+      ? [{ id: 'eta', kind: 'eta' as const, at: { lat: (loc.lat + target.lat) / 2, lng: (loc.lng + target.lng) / 2 }, label: `${eta} min`, sublabel: etaInfo.traffic === 'light' ? 'Light traffic' : `+${etaInfo.delay} min traffic`, tone: etaInfo.traffic }]
+      : []),
     ...(loc ? [{ id: 'car', at: loc, kind: 'car' as const, heading: loc.heading }] : []),
   ]
   const fit = loc ? [loc, target] : [booking.pickup, booking.drop]

@@ -5,25 +5,30 @@ import 'package:provider/provider.dart';
 
 import '../api/models.dart';
 import '../state/session.dart';
-import '../theme.dart';
 import '../util/format.dart';
+import '../util/geo.dart';
+import 'ride_map.dart';
 
-/// "48 min · 22 km · arrive 5:03 AM", plus live traffic ("Heavy traffic now · +8 min")
-/// when the trip starts within 90 minutes or is under way. Refreshes every 2 minutes.
-class TripTime extends StatefulWidget {
-  const TripTime({super.key, required this.from, required this.to, required this.departAt, required this.plannedMin, required this.distanceKm, this.live = false});
+/// Trip time and arrival, with live traffic when the trip starts within 90 minutes or is under way.
+typedef TripEta = ({int minutes, double km, DateTime arrive, String? traffic, int delay});
+
+/// Fetches the traffic-aware trip time (every 2 minutes) and hands it to [builder].
+/// Falls back to the planned route time until/unless live data arrives.
+class TripEtaBuilder extends StatefulWidget {
+  const TripEtaBuilder({super.key, required this.from, required this.to, required this.departAt, required this.plannedMin, required this.distanceKm, this.live = false, required this.builder});
   final LatLngPoint from;
   final LatLngPoint to;
   final DateTime departAt;
   final int plannedMin;
   final double distanceKm;
   final bool live;
+  final Widget Function(BuildContext context, TripEta eta) builder;
 
   @override
-  State<TripTime> createState() => _TripTimeState();
+  State<TripEtaBuilder> createState() => _TripEtaBuilderState();
 }
 
-class _TripTimeState extends State<TripTime> {
+class _TripEtaBuilderState extends State<TripEtaBuilder> {
   LiveEta? _eta;
   Timer? _timer;
   String? _key;
@@ -53,7 +58,7 @@ class _TripTimeState extends State<TripTime> {
   }
 
   @override
-  void didUpdateWidget(TripTime old) {
+  void didUpdateWidget(TripEtaBuilder old) {
     super.didUpdateWidget(old);
     if (_k != _key) _restart();
   }
@@ -69,22 +74,40 @@ class _TripTimeState extends State<TripTime> {
     final e = _eta;
     final mins = e?.durationMin ?? widget.plannedMin;
     final start = widget.live || widget.departAt.isBefore(DateTime.now()) ? DateTime.now() : widget.departAt;
-    final arrive = start.add(Duration(minutes: mins));
-    final color = switch (e?.traffic) { 'heavy' => RS.danger, 'moderate' => RS.warning, _ => RS.success };
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Icon(Icons.schedule, size: 18, color: RS.ink500),
-        const SizedBox(width: 6),
-        Expanded(child: Text('${minutes(mins)} · ${km(widget.distanceKm)} · arrive ~${timeOf(arrive)}', style: const TextStyle(fontWeight: FontWeight.w600))),
-      ]),
-      if (e?.traffic != null)
-        Padding(
-          padding: const EdgeInsets.only(left: 24, top: 2),
-          child: Text(
-            e!.traffic == 'light' ? 'Light traffic now · live' : '${e.traffic == 'heavy' ? 'Heavy' : 'Some'} traffic now · +${e.trafficDelayMin} min · live',
-            style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-        ),
-    ]);
+    return widget.builder(context, (minutes: mins, km: widget.distanceKm, arrive: start.add(Duration(minutes: mins)), traffic: e?.traffic, delay: e?.trafficDelayMin ?? 0));
   }
+}
+
+/// The point `frac` of the way along a route (by distance).
+LatLngPoint? pointAlong(List<LatLngPoint> coords, [double frac = 0.5]) {
+  if (coords.isEmpty) return null;
+  if (coords.length == 1) return coords.first;
+  final seg = <double>[];
+  var total = 0.0;
+  for (var i = 1; i < coords.length; i++) {
+    final d = haversineKm(coords[i - 1], coords[i]);
+    seg.add(d);
+    total += d;
+  }
+  var want = total * frac;
+  for (var i = 0; i < seg.length; i++) {
+    if (want <= seg[i] || i == seg.length - 1) {
+      final k = seg[i] == 0 ? 0.0 : (want / seg[i]).clamp(0.0, 1.0);
+      return LatLngPoint(coords[i].lat + (coords[i + 1].lat - coords[i].lat) * k, coords[i].lng + (coords[i + 1].lng - coords[i].lng) * k);
+    }
+    want -= seg[i];
+  }
+  return coords.last;
+}
+
+/// The time bubble on the route: "21 min" + "Light traffic · 10 km" / "+8 min traffic" / "10 km".
+MapPin? etaPin(List<LatLngPoint> route, TripEta eta, [LatLngPoint? at]) {
+  final p = at ?? pointAlong(route);
+  if (p == null) return null;
+  final sub = switch (eta.traffic) {
+    'light' => 'Light traffic · ${km(eta.km)}',
+    null => km(eta.km),
+    _ => '+${eta.delay} min traffic',
+  };
+  return MapPin(p, 'eta', label: minutes(eta.minutes), sublabel: sub, tone: eta.traffic);
 }

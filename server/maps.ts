@@ -49,6 +49,8 @@ export function mapsConfig() {
           url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
         },
+    // Sharp vector map with 3D buildings on the website.
+    vectorStyle: maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
     search: google ? 'google' : olaConfigured() ? 'ola' : maptiler() ? 'maptiler' : 'openstreetmap',
     routing: google ? 'google' : tomtomConfigured() ? 'tomtom' : env.orsKey ? 'openrouteservice' : 'osrm',
     /** Live traffic layer: tiles come from /api/traffic/{z}/{x}/{y}.png */

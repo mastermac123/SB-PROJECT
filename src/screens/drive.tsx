@@ -9,7 +9,7 @@ import { StateView } from '@/components/States'
 import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
-import { TripTime } from '@/components/TripTime'
+import { etaBubble, useTripEta } from '@/components/TripTime'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, VerifiedBadge } from '@/components/ui'
@@ -335,6 +335,14 @@ export function DriverRide() {
   const ride = q.data?.ride
   const live = ride?.status === 'in_progress'
   const { pos, error: locError } = useShareLocation(rideId ?? '', !!live && ride?.driverId === user?.id)
+  const eta = useTripEta({
+    from: pos ?? ride?.origin ?? CAMPUS,
+    to: ride?.destination ?? CAMPUS,
+    departAt: ride?.departAt ?? new Date().toISOString(),
+    plannedMin: ride?.durationMin ?? 0,
+    distanceKm: ride?.distanceKm ?? 0,
+    live: !!live,
+  })
 
   if (q.loading)
     return (
@@ -389,9 +397,12 @@ export function DriverRide() {
     }
   }
 
+  const upcoming = ride.status === 'scheduled' || live
+  const bubble = upcoming ? etaBubble(ride.route, eta) : null
   const markers: MapMarker[] = [
-    { id: 'o', at: ride.origin, kind: 'pickup', label: ride.origin.name, sublabel: time(ride.departAt), darkLabel: true },
-    { id: 'd', at: ride.destination, kind: 'drop', label: ride.destination.name },
+    { id: 'o', at: ride.origin, kind: 'pickup', label: ride.origin.name, sublabel: `Leave ${time(ride.departAt)}`, darkLabel: true },
+    { id: 'd', at: ride.destination, kind: 'drop', label: ride.destination.name, sublabel: upcoming ? `Arrive ~${time(eta.arrive)}` : undefined },
+    ...(bubble ? [bubble] : []),
     ...[...pending, ...riders]
       .filter((b) => b.status !== 'completed' && Math.abs(b.pickup.lat - ride.origin.lat) + Math.abs(b.pickup.lng - ride.origin.lng) > 0.002)
       .map((b) => ({ id: b.id, at: b.pickup, kind: 'me' as const, label: firstName(b.rider.name) })),
@@ -449,11 +460,8 @@ export function DriverRide() {
           </div>
           <Stops
             from={{ title: ride.origin.name, subtitle: ride.origin.area, time: time(ride.departAt) }}
-            to={{ title: ride.destination.name, subtitle: ride.destination.area, time: time(new Date(new Date(ride.departAt).getTime() + ride.durationMin * 60_000)) }}
+            to={{ title: ride.destination.name, subtitle: ride.destination.area, time: upcoming ? `~${time(eta.arrive)}` : time(new Date(new Date(ride.departAt).getTime() + ride.durationMin * 60_000)) }}
           />
-          {(ride.status === 'scheduled' || live) && (
-            <TripTime from={pos ?? ride.origin} to={ride.destination} departAt={ride.departAt} plannedMin={ride.durationMin} distanceKm={ride.distanceKm} live={live} />
-          )}
           <div className="facts">
             <div className="fact">
               <span className="fact__label">Seats filled</span>

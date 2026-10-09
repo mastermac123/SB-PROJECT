@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "RideSync AI \u2014 AI-matched carpooling for the VIT community",
+  "description": "RideSync AI — AI-matched carpooling for the VIT community",
   "scripts": {
     "predev": "node scripts/check-node.mjs",
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
@@ -25,6 +25,7 @@
     "jose": "^6.2.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.53.0",
+    "maplibre-gl": "^5.24.0",
     "nodemailer": "^10.0.16",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
