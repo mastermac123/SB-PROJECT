@@ -176,57 +176,71 @@ How RideSync saves on Google usage:
 
 The terminal shows which map services are active when RideSync starts.
 
-## 3e. Android and iPhone apps
+## 3e. Android and iPhone apps (Flutter)
 
-The apps contain all RideSync screens and talk to the same server as the website, so everyone shares the same rides, chats and accounts. The apps are built with **Capacitor** from this same code (`android/` and `ios/`).
+The mobile app is a **Flutter** app written in **Dart**, in the `mobile/` folder. It talks to the same server as the website, so app and website users share the same accounts, rides, chats and live updates. It signs in with an email code and keeps its login securely on the phone.
 
-### Android: get the app (no Android Studio needed)
+| Part | Package |
+|---|---|
+| UI | Flutter (Material 3) with RideSync's colours and fonts (`lib/theme.dart`) |
+| Server calls | `http`; live updates over Server-Sent Events (`lib/api/`) |
+| State | `provider` (`lib/state/session.dart`) |
+| Maps | `flutter_map` + OpenStreetMap |
+| GPS | `geolocator` |
+| Photos | `image_picker` |
+| Login storage | `flutter_secure_storage` |
+| UPI, calls, SMS | `url_launcher` |
 
-GitHub builds the app automatically on every update to `main`.
+### Android: get the app
 
-1. On your phone, open **github.com/mastermac123/SB-PROJECT → Releases → "Android app (latest)"** and download **RideSync.apk**. You must be signed in to GitHub if the repo is private.
-2. Open the file. Android asks to **allow installing from this source**; allow it, then tap **Install**.
+GitHub builds the APK automatically on every update to `main`.
+
+1. On your phone, open **github.com/mastermac123/SB-PROJECT/releases/tag/app-latest** and download **RideSync.apk**. Sign in to GitHub first if the repo is private.
+2. Open the file, allow **installing from this source**, then tap **Install**.
 3. On first launch the app asks for a **server link**:
    - Testing with your laptop: run `start.bat`, then `share.bat`, and paste the `https://….trycloudflare.com` link.
-   - Once RideSync is online: build the address into the app instead. In GitHub, go to **Settings → Secrets and variables → Actions → Variables** and add `RIDESYNC_SERVER_URL` = `https://your-server`. The next build connects automatically.
-4. Sign in with your `@vit.edu.in` email code.
+   - Once RideSync is online: add the repository variable `RIDESYNC_SERVER_URL` = `https://your-server` (GitHub → Settings → Secrets and variables → Actions → Variables). The next build connects automatically.
 
-Change the server later from **Profile → Settings → Change server** (test builds only).
+### Build it yourself
+
+Install Flutter (https://docs.flutter.dev/get-started/install) and Android Studio, then:
+
+```bash
+cd mobile
+flutter pub get
+flutter run                                    # on a connected phone or emulator
+flutter build apk --dart-define=RIDESYNC_SERVER_URL=https://your-server
+```
 
 ### iPhone
 
-Apple only allows installing apps through the App Store or TestFlight, so an iPhone app needs:
+The same Flutter code builds for iOS (`mobile/ios`), but Apple requires:
 
-- an **Apple Developer account** ($99/year)
-- a **Mac** with Xcode, or a cloud Mac build service such as Codemagic
+- a **Mac** with Xcode
+- an **Apple Developer account** ($99/year) to install on iPhones through TestFlight or the App Store
 
-Steps on a Mac:
+On the Mac, run `flutter build ipa --dart-define=RIDESYNC_SERVER_URL=https://your-server`, then upload it with Xcode or Transporter. Until then, iPhone users can use the website: open it in Safari → **Share** → **Add to Home Screen**.
 
-```bash
-VITE_API_URL=https://your-server npm run build:app
-npx cap open ios        # opens Xcode → pick your team → Product → Archive → TestFlight
-```
+### What's in the app
 
-Until then, iPhone users can use the website: open the link in Safari, tap **Share**, then **Add to Home Screen**.
-
-### What works in the app today
-
-Everything in the website works in the app:
-
-- login with an email code
-- offering, finding and booking rides
-- live GPS (while the app is open)
-- chat
-- UPI (opens GPay/PhonePe), call and SMS
-- photo upload
-- maps
+- email-code login
+- profile and onboarding (photo, phone, student ID, car, UPI)
+- home feed of rides leaving soon
+- Find a ride with AI matches and "Why this match?"
+- ride details and seat requests
+- live trip status
+- payment by UPI (opens GPay/PhonePe/Paytm) or cash
+- the driver's live GPS on the map
+- Offer a ride with the suggested cost-share
+- driver controls (accept/decline, start, arrived, picked up, dropped off, complete)
+- chat, notifications, My Rides, payments
+- SOS (112 and a text to your emergency contacts) and ratings
 
 **Still to add for a store release:**
 
-- push notifications while the app is closed (needs a free Firebase project)
+- push notifications while the app is closed (Firebase)
 - location sharing with the screen off
 - Sign in with Microsoft inside the app
-- store listings
 
 ## 4. Put it online
 
@@ -274,6 +288,7 @@ server/            Node API (Express + built-in node:sqlite)
   db.ts              schema
   events.ts          Server-Sent Events for live updates
 src/               React web app
+mobile/            Flutter app for Android and iOS (Dart)
   lib/               shared with the server: types, AI matching, geo, validation
   services/api.ts    API client, live-update connection, query cache
   screens/           each product area

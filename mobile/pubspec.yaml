@@ -1,0 +1,33 @@
+name: ridesync
+description: RideSync AI — carpooling for VIT students (Flutter app for Android and iOS).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: 1.6.0
+  provider: 6.1.5+1
+  flutter_map: 8.3.2
+  latlong2: 0.10.1
+  geolocator: 14.0.3
+  image_picker: 1.2.3
+  url_launcher: 6.3.2
+  flutter_secure_storage: 11.2.0
+  shared_preferences: 2.5.5
+  intl: 0.20.3
+  google_fonts: 8.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

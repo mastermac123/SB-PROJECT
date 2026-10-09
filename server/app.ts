@@ -6,8 +6,6 @@ import { env } from './env'
 import { HttpError } from './logic'
 import { api, razorpayWebhook } from './routes'
 
-export const APP_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost'])
-
 export function createApp() {
   const app = express()
   app.disable('x-powered-by')
@@ -18,23 +16,6 @@ export function createApp() {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
     res.setHeader('X-Frame-Options', 'DENY')
     res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()')
-    next()
-  })
-
-  // The Android/iOS app runs from capacitor://localhost (iOS) or https://localhost (Android).
-  // It signs in with a bearer token, never cookies, so credentials stay off.
-  app.use('/api', (req, res, next) => {
-    const origin = req.get('origin')
-    if (origin && APP_ORIGINS.has(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin)
-      res.setHeader('Vary', 'Origin')
-      if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE')
-        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-ridesync, x-ridesync-app')
-        res.setHeader('Access-Control-Max-Age', '86400')
-        return res.status(204).end()
-      }
-    }
     next()
   })
 

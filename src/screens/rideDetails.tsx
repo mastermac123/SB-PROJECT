@@ -16,18 +16,11 @@ import type { MatchResult, SearchQuery } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, matchRide, useMe, useQuery, type RideDetail } from '@/services/api'
 import { useSearch, withInstant } from '@/state/search'
-import { apiBase, isApp } from '@/services/native'
 import { RideCardSkeleton } from '@/components/ui'
-
-/** In the app the page address is internal (https://localhost/…), so share the server's address instead. */
-function shareableUrl() {
-  if (!isApp) return window.location.href
-  return apiBase() ? `${apiBase()}${window.location.pathname}` : ''
-}
 
 const ACTIVE_BOOKING = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
 
-export async function shareLink(title: string, text: string, url = shareableUrl()) {
+export async function shareLink(title: string, text: string, url = window.location.href) {
   if (navigator.share) {
     try {
       await navigator.share({ title, text, url })

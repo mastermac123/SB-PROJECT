@@ -9,7 +9,6 @@ import { Button, Field, Notice, cx } from '@/components/ui'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { validateCollegeEmail } from '@/lib/validation'
 import { ApiError, auth, useConfig, useMe } from '@/services/api'
-import { isApp } from '@/services/native'
 
 /* ==========================================================================
    Splash
@@ -267,8 +266,7 @@ export function Login() {
     }
   }
 
-  // Microsoft/Google sign-in use web redirects; the app signs in with an email code.
-  const cfg = config.data && isApp ? { ...config.data, microsoftLogin: false, googleClientId: null } : config.data
+  const cfg = config.data
   return (
     <AuthLayout top={<div className="auth__inner" style={{ flex: 'none', paddingBottom: 0, paddingTop: 8 }}>{step === 'code' ? <button className="icon-btn" aria-label="Back" onClick={() => setStep('email')}><ArrowRight style={{ transform: 'rotate(180deg)' }} /></button> : <BackButton to="/welcome" />}</div>}>
       <AnimatePresence mode="wait">

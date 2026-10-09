@@ -11,8 +11,8 @@ export default defineConfig({
     host: true, // reachable from phones on the same Wi-Fi for testing
     // share.bat gives a temporary https link (Cloudflare quick tunnel) for testing on phones
     allowedHosts: ['.trycloudflare.com'],
-    // Let the Android/iOS app (capacitor://localhost, https://localhost) use this dev server as its server.
-    cors: { origin: [/^https?:\/\/(?:[^:]+\.)?localhost(?::\d+)?$/, /^https?:\/\/127\.0\.0\.1(?::\d+)?$/, 'capacitor://localhost'] },
+    // Lets the Flutter app's web test build (flutter run -d chrome) use this dev server.
+    cors: { origin: [/^https?:\/\/(?:[^:]+\.)?localhost(?::\d+)?$/, /^https?:\/\/127\.0\.0\.1(?::\d+)?$/] },
     proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: false } },
   },
 })
