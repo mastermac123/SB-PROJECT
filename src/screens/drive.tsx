@@ -616,7 +616,7 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
         <span className="t-muted">
           {money(b.fare)} · {paymentLabel(b)}
         </span>
-        {b.paymentStatus !== 'received' && b.status !== 'accepted' && (
+        {(b.paymentStatus === 'unpaid' || b.paymentStatus === 'marked_paid') && b.status !== 'accepted' && (
           <button className="t-strong t-primary" disabled={busy} onClick={() => onStep(() => bookings.paymentReceived(b.id), `Marked ${money(b.fare)} as received`)}>
             Mark received
           </button>

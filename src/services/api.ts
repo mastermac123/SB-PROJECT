@@ -237,7 +237,16 @@ export function useDriverLocation(rideId: string | undefined, initial?: DriverLo
    Auth & profile
    ========================================================================== */
 
-export type AppConfig = { allowedDomain: string; googleClientId: string | null; microsoftLogin: boolean; emailLogin: boolean; codesInTerminal: boolean; devLogin: boolean }
+export type AppConfig = {
+  allowedDomain: string
+  googleClientId: string | null
+  microsoftLogin: boolean
+  emailLogin: boolean
+  codesInTerminal: boolean
+  devLogin: boolean
+  razorpayKeyId: string | null
+  maps: { tiles: { url: string; attribution: string }; search: 'maptiler' | 'openstreetmap'; routing: 'openrouteservice' | 'osrm' }
+}
 
 export const useConfig = () => useQuery<AppConfig>('/config')
 
@@ -308,6 +317,15 @@ export async function deleteAccount() {
 export type SearchResponse = { results: MatchResult[]; ridesInWindow: number }
 export type FeedItem = { ride: Ride; driver: PublicUser; vehicle: Vehicle }
 export type RouteInfo = { coords: { lat: number; lng: number }[]; distanceKm: number; durationMin: number; source: 'osrm' | 'estimate' }
+
+export const searchPlacesRemote = (q: string) => get<Place[]>(`/places?q=${encodeURIComponent(q)}`)
+
+export type OnlineOrder = { keyId: string; orderId: string; amount: number; currency: string; description: string; prefill: { name: string; email: string; contact: string } }
+export const payOnline = {
+  createOrder: (bookingId: string) => post<OnlineOrder>(`/bookings/${bookingId}/pay/online`),
+  verify: (bookingId: string, r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) =>
+    mutate(post(`/bookings/${bookingId}/pay/online/verify`, r)),
+}
 
 export const searchRides = (q: SearchQuery) => post<SearchResponse>('/rides/search', q)
 export const matchRide = (rideId: string, query: SearchQuery) => post<{ match: MatchResult | null }>(`/rides/${rideId}/match`, { query }).then((r) => r.match)
@@ -398,7 +416,11 @@ export function requestLocation(): Promise<Place> {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
-        resolve({ id: `here-${lat.toFixed(5)},${lng.toFixed(5)}`, name: 'Current location', area: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng, kind: 'custom' })
+        const place: Place = { id: `here-${lat.toFixed(5)},${lng.toFixed(5)}`, name: 'Current location', area: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng, kind: 'custom' }
+        // Name the spot ("Near Dadar TT Circle") when the server can.
+        get<{ name: string; area: string }>(`/places/reverse?lat=${lat}&lng=${lng}`)
+          .then((r) => resolve({ ...place, name: r.name || place.name, area: r.area || place.area }))
+          .catch(() => resolve(place))
       },
       (err) => reject(new ApiError('validation', err.code === err.PERMISSION_DENIED ? 'Location permission denied' : 'Couldn’t get your location. Try again.')),
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },

@@ -10,6 +10,8 @@ const STATUS: Record<PaymentRecord['status'], { label: string; tone?: 'success' 
   unpaid: { label: 'Cash due', tone: 'warning' },
   marked_paid: { label: 'Paid · unconfirmed' },
   received: { label: 'Received', tone: 'success' },
+  paid_online: { label: 'Paid online', tone: 'success' },
+  refunded: { label: 'Refunded' },
 }
 
 export function Wallet() {
@@ -19,9 +21,9 @@ export function Wallet() {
   const list = q.data ?? []
   const month = new Date().getMonth()
   const thisMonth = list.filter((p) => new Date(p.at).getMonth() === month)
-  const spent = thisMonth.filter((p) => p.direction === 'paid' && p.status !== 'unpaid').reduce((s, p) => s + p.amount, 0)
-  const received = thisMonth.filter((p) => p.direction === 'received' && p.status === 'received').reduce((s, p) => s + p.amount, 0)
-  const toCollect = list.filter((p) => p.direction === 'received' && p.status !== 'received').reduce((s, p) => s + p.amount, 0)
+  const spent = thisMonth.filter((p) => p.direction === 'paid' && p.status !== 'unpaid' && p.status !== 'refunded').reduce((s, p) => s + p.amount, 0)
+  const received = thisMonth.filter((p) => p.direction === 'received' && (p.status === 'received' || p.status === 'paid_online')).reduce((s, p) => s + p.amount, 0)
+  const toCollect = list.filter((p) => p.direction === 'received' && (p.status === 'unpaid' || p.status === 'marked_paid')).reduce((s, p) => s + p.amount, 0)
 
   return (
     <Page title="Wallet" back={false}>
@@ -82,7 +84,7 @@ export function Wallet() {
                   <span className="list-row__body">
                     <span className="list-row__title">{p.direction === 'received' ? `From ${p.counterparty}` : `To ${p.counterparty}`}</span>
                     <span className="list-row__sub truncate">
-                      {p.route} · {p.method === 'upi' ? 'UPI' : 'Cash'} · {relative(p.at)}
+                      {p.route} · {p.method === 'upi' ? 'UPI' : p.method === 'online' ? 'Online' : 'Cash'} · {relative(p.at)}
                     </span>
                   </span>
                   <span className="stack" style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -98,7 +100,7 @@ export function Wallet() {
           )}
         </section>
         <p className="t-caption t-muted" style={{ fontWeight: 400 }}>
-          RideSync doesn’t hold money. Riders pay drivers directly by UPI or cash, and both sides see the record here.
+          Riders pay drivers directly by UPI or cash, or online through Razorpay. Online payments for cancelled rides are refunded automatically.
         </p>
       </div>
     </Page>

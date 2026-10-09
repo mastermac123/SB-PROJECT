@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, Copy, ExternalLink, Smartphone } from 'lucide-react'
+import { Banknote, CreditCard, Copy, ExternalLink, FlaskConical, Lock, Smartphone } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -9,13 +9,38 @@ import { useToast } from '@/components/Toast'
 import { Button, Field, Notice, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop } from '@/hooks'
 import { firstName, money } from '@/lib/format'
-import { ApiError, Q, bookings, useQuery, type BookingDetail } from '@/services/api'
+import { ApiError, Q, bookings, payOnline, useConfig, useQuery, type BookingDetail } from '@/services/api'
 import { SuccessMark } from './trip'
 
 /**
- * Cost-share is paid straight to the driver — by UPI (deep link / QR) or cash.
- * RideSync records the payment; it never holds money, so no gateway or KYC is needed.
+ * Three ways to pay the cost-share:
+ *   online — Razorpay Checkout (UPI, cards, netbanking); verified on the server, auto-refunded on cancellation
+ *   upi    — straight to the driver's UPI ID (deep link on phones, QR on desktop)
+ *   cash   — at pickup
  */
+
+type RazorpayCtor = new (opts: Record<string, unknown>) => { open: () => void; on: (ev: string, fn: (r: { error?: { description?: string } }) => void) => void }
+declare global {
+  interface Window {
+    Razorpay?: RazorpayCtor
+  }
+}
+
+let checkoutJs: Promise<void> | null = null
+function loadCheckout() {
+  if (window.Razorpay) return Promise.resolve()
+  checkoutJs ??= new Promise<void>((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    s.onload = () => resolve()
+    s.onerror = () => {
+      checkoutJs = null
+      reject(new Error('Couldn’t load the payment window. Check your connection.'))
+    }
+    document.body.appendChild(s)
+  })
+  return checkoutJs
+}
 export function upiLink(pa: string, pn: string, amount: number, note: string) {
   const p = new URLSearchParams({ pa, pn, am: amount.toFixed(2), cu: 'INR', tn: note.slice(0, 60) })
   return `upi://pay?${p.toString().replace(/\+/g, '%20')}`
@@ -27,20 +52,23 @@ export function Payment() {
   const toast = useToast()
   const desktop = useIsDesktop()
   const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
-  const [method, setMethod] = useState<'upi' | 'cash' | null>(null)
+  const config = useConfig()
+  const rzpKey = config.data?.razorpayKeyId ?? null
+  const [method, setMethod] = useState<'online' | 'upi' | 'cash' | null>(null)
   const [opened, setOpened] = useState(false)
   const [ref, setRef] = useState('')
   const [qr, setQr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState<'upi' | 'cash' | null>(null)
+  const [done, setDone] = useState<'online' | 'upi' | 'cash' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const d = q.data
   const link = d?.driverUpiId ? upiLink(d.driverUpiId, d.driver.name, d.booking.fare, `RideSync ${d.booking.pickup.name} to ${d.booking.drop.name}`) : null
 
   useEffect(() => {
-    if (d && method === null) setMethod(d.driverUpiId ? 'upi' : 'cash')
-  }, [d, method])
+    // Wait for the server config so "Pay online" is the default when the gateway is set up.
+    if (d && config.data && method === null) setMethod(rzpKey ? 'online' : d.driverUpiId ? 'upi' : 'cash')
+  }, [d, method, rzpKey, config.data])
   useEffect(() => {
     if (link && desktop) QRCode.toDataURL(link, { margin: 1, width: 240, color: { dark: '#15182E', light: '#FFFFFF' } }).then(setQr).catch(() => setQr(null))
   }, [link, desktop])
@@ -56,7 +84,7 @@ export function Payment() {
   if (!d) return <Navigate to="/rides" replace />
   const { booking, driver } = d
   const name = firstName(driver.name)
-  const canPay = booking.status === 'accepted' || (booking.paymentMethod === 'cash' && booking.paymentStatus !== 'received' && ['confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(booking.status))
+  const canPay = booking.status === 'accepted' || (booking.paymentMethod === 'cash' && booking.paymentStatus === 'unpaid' && ['confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(booking.status))
   if (d.role !== 'rider' || (!canPay && !done)) return <Navigate to={`/trip/${booking.id}`} replace />
 
   async function confirm(m: 'upi' | 'cash') {
@@ -72,6 +100,45 @@ export function Payment() {
     }
   }
 
+  async function payWithGateway() {
+    setSaving(true)
+    setError(null)
+    try {
+      const order = await payOnline.createOrder(booking.id)
+      await loadCheckout()
+      const rzp = new window.Razorpay!({
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'RideSync AI',
+        description: order.description,
+        image: `${window.location.origin}/apple-touch-icon.png`,
+        prefill: order.prefill,
+        theme: { color: '#5038E6' },
+        handler: async (resp: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            await payOnline.verify(booking.id, resp)
+            setDone('online')
+          } catch (e) {
+            setError(e instanceof ApiError ? e.message : 'We couldn’t confirm the payment. If money was taken it will be refunded.')
+          } finally {
+            setSaving(false)
+          }
+        },
+        modal: { ondismiss: () => setSaving(false) },
+      })
+      rzp.on('payment.failed', (r) => {
+        setError(`Payment failed: ${r.error?.description ?? 'please try again'}. You haven’t been charged.`)
+        setSaving(false)
+      })
+      rzp.open()
+    } catch (e) {
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t start the payment.')
+      setSaving(false)
+    }
+  }
+
   if (done) {
     return (
       <div className="page" style={{ justifyContent: 'center' }}>
@@ -80,7 +147,7 @@ export function Payment() {
             <SuccessMark />
             <h1 className="t-h1">Seat confirmed</h1>
             <p className="t-body t-muted">
-              {done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} ${money(booking.fare)} in cash at pickup.`}
+              {done === 'online' ? `${money(booking.fare)} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} ${money(booking.fare)} in cash at pickup.`}
             </p>
           </div>
           <div className="stack gap-2" style={{ marginTop: 16 }}>
@@ -118,19 +185,33 @@ export function Payment() {
                 <span className="t-success">Free</span>
               </div>
               <div className="bill__row bill__row--total">
-                <span>Total to {name}</span>
+                <span>Total</span>
                 <span>{money(booking.fare)}</span>
               </div>
             </div>
           </div>
 
           <div className="stack gap-2" role="radiogroup" aria-label="Payment method">
+            {rzpKey && (
+              <MethodOption
+                selected={method === 'online'}
+                onSelect={() => setMethod('online')}
+                logo={<CreditCard />}
+                title="Pay online"
+                subtitle="UPI, cards, netbanking · secured by Razorpay · auto-refund if cancelled"
+              />
+            )}
+            {rzpKey?.startsWith('rzp_test_') && method === 'online' && (
+              <Notice tone="warning" icon={<FlaskConical />} title="Razorpay test mode">
+                No real money moves. Use UPI ID <strong>success@razorpay</strong> or card <strong>4111 1111 1111 1111</strong> (any future expiry, any CVV).
+              </Notice>
+            )}
             <MethodOption
               selected={method === 'upi'}
               disabled={!d.driverUpiId}
               onSelect={() => setMethod('upi')}
               logo={<Smartphone />}
-              title="UPI"
+              title="UPI to driver"
               subtitle={d.driverUpiId ? `Google Pay, PhonePe, Paytm or any UPI app · to ${d.driverUpiId}` : `${name} hasn’t added a UPI ID yet`}
             />
             <AnimatePresence initial={false}>
@@ -175,12 +256,16 @@ export function Payment() {
 
           {error && <Notice tone="error">{error}</Notice>}
           <p className="t-caption t-muted" style={{ fontWeight: 400 }}>
-            You pay {name} directly. RideSync never holds your money and charges no fee. If a ride is cancelled after you’ve paid by UPI, the driver refunds you directly.
+            Online payments are verified by RideSync and refunded automatically if the ride is cancelled. UPI and cash go straight to {name}, who refunds you directly if needed.
           </p>
         </div>
       </div>
       <div className="page__footer page__footer--narrow">
-        {method === 'upi' ? (
+        {method === 'online' ? (
+          <Button size="lg" block icon={<Lock />} loading={saving} onClick={payWithGateway}>
+            Pay {money(booking.fare)}
+          </Button>
+        ) : method === 'upi' ? (
           <Button size="lg" block loading={saving} onClick={() => confirm('upi')}>
             {opened || desktop ? `I’ve paid ${money(booking.fare)}` : `I’ve paid ${money(booking.fare)} by UPI`}
           </Button>

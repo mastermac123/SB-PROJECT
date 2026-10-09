@@ -38,8 +38,10 @@ import {
   vehicleFor,
 } from './logic'
 import { getRoute } from './routing'
+import { mapsConfig, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart } from './microsoft'
-import { microsoftConfigured, smtpConfigured } from './env'
+import { microsoftConfigured, razorpayConfigured, smtpConfigured } from './env'
+import { createOrder, refundPayment, verifyPaymentSignature, verifyWebhookSignature } from './razorpay'
 
 export const api = Router()
 
@@ -87,7 +89,7 @@ const QueryZ = z.object({
 /* ---- Config & auth -------------------------------------------------------- */
 
 api.get('/config', (_req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !smtpConfigured(), devLogin: env.devLogin })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !smtpConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig() })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -259,7 +261,7 @@ api.delete(
 api.delete(
   '/me',
   requireUser,
-  h((req, res) => {
+  h(async (req, res) => {
     const id = meId(req)
     const affected = new Set<string>()
     tx(() => {
@@ -268,6 +270,7 @@ api.delete(
       }
       for (const b of all(`SELECT * FROM bookings WHERE rider_id = ? AND status IN ('pending','accepted','confirmed')`, id)) {
         run(`UPDATE bookings SET status='cancelled', cancelled_by='rider', cancel_reason='Rider deleted their account', updated_at=? WHERE id = ?`, nowIso(), b.id)
+        scheduleRefund(b)
         affected.add(String(rideRow(String(b.ride_id)).driver_id))
       }
       run(`UPDATE users SET deleted = 1, email = ?, phone = '', student_id = '', upi_id = NULL, photo = NULL, emergency_contacts = '[]' WHERE id = ?`, `deleted+${id}@deleted.invalid`, id)
@@ -275,6 +278,7 @@ api.delete(
       run(`DELETE FROM sessions WHERE user_id = ?`, id)
     })
     res.clearCookie('rs_session', { path: '/' })
+    await flushRefunds()
     sync(affected)
     broadcastSync()
   }),
@@ -288,6 +292,40 @@ api.get('/events', requireUser, (req, res) => {
   const remove = addStream(meId(req), res)
   req.on('close', remove)
 })
+
+/* ---- Places ---------------------------------------------------------------- */
+
+const placeHits = new Map<string, { n: number; since: number }>()
+function placeRateLimit(userId: string) {
+  const now = Date.now()
+  const h = placeHits.get(userId)
+  if (h && now - h.since < 60_000) {
+    if (++h.n > 40) throw new HttpError(429, 'Slow down a little — too many searches.')
+  } else placeHits.set(userId, { n: 1, since: now })
+}
+
+api.get(
+  '/places',
+  requireUser,
+  h(async (req) => {
+    const q = String(req.query.q ?? '').trim()
+    if (q.length < 3 || q.length > 100) return []
+    placeRateLimit(meId(req))
+    return searchPlaces(q)
+  }),
+)
+
+api.get(
+  '/places/reverse',
+  requireUser,
+  h(async (req) => {
+    const lat = Number(req.query.lat)
+    const lng = Number(req.query.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new HttpError(400, 'Invalid location')
+    placeRateLimit(meId(req))
+    return (await reverseGeocode(lat, lng)) ?? { name: 'Current location', area: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }
+  }),
+)
 
 /* ---- Routing preview ------------------------------------------------------ */
 
@@ -458,12 +496,47 @@ function assertDriver(rideId: string, userId: string) {
   return r
 }
 
+/* ---- Gateway refunds ------------------------------------------------------ */
+
+const refundQueue: string[] = []
+/** Mark a booking for an automatic gateway refund; call flushRefunds() after the DB change commits. */
+function scheduleRefund(b: Row) {
+  if (b.payment_status === 'paid_online' && b.gateway_payment_id) refundQueue.push(String(b.id))
+}
+
+async function flushRefunds() {
+  const ids = refundQueue.splice(0)
+  await Promise.all(
+    ids.map(async (id) => {
+      const b = one(`SELECT * FROM bookings WHERE id = ?`, id)
+      if (!b || b.payment_status !== 'paid_online') return
+      try {
+        const refund = await refundPayment(String(b.gateway_payment_id), Number(b.fare), { booking: id })
+        run(`UPDATE bookings SET payment_status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?`, refund.id, nowIso(), id)
+        notify(String(b.rider_id), 'payment', 'Refund started', `${money(Number(b.fare))} is on its way back to your original payment method (usually 5–7 working days).`, `/trip/${id}`)
+      } catch (e) {
+        console.error('[ridesync] refund failed', id, e)
+        notify(String(b.rider_id), 'payment', 'Refund pending', `We couldn’t start your ${money(Number(b.fare))} refund automatically. We’ll retry — contact support if it doesn’t arrive.`, `/trip/${id}`)
+      }
+      sync([String(b.rider_id)])
+    }),
+  )
+}
+
+const paidDirectly = (b: Row) => b.payment_status === 'marked_paid' || b.payment_status === 'received'
+
 function cancelRideInternal(rideId: string, reason: string, affected: Set<string>) {
   const r = rideRow(rideId)
   run(`UPDATE rides SET status = 'cancelled', ended_at = ? WHERE id = ?`, nowIso(), rideId)
   for (const b of all(`SELECT * FROM bookings WHERE ride_id = ? AND status IN (${ACTIVE.map((s) => `'${s}'`).join(',')})`, rideId)) {
     run(`UPDATE bookings SET status = 'cancelled', cancelled_by = 'driver', cancel_reason = ?, updated_at = ? WHERE id = ?`, reason, nowIso(), b.id)
-    const paidNote = b.payment_status === 'marked_paid' || b.payment_status === 'received' ? ` Ask ${first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'the driver'))} to refund your UPI payment.` : ''
+    scheduleRefund(b)
+    const paidNote =
+      b.payment_status === 'paid_online'
+        ? ' Your online payment will be refunded automatically.'
+        : paidDirectly(b)
+          ? ` Ask ${first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'the driver'))} to refund your UPI payment.`
+          : ''
     notify(String(b.rider_id), 'cancelled', 'Your ride was cancelled', `${reason}.${paidNote} Find another match on RideSync.`, `/trip/${b.id}`)
     affected.add(String(b.rider_id))
   }
@@ -472,12 +545,13 @@ function cancelRideInternal(rideId: string, reason: string, affected: Set<string
 api.post(
   '/rides/:id/cancel',
   requireOnboarded,
-  h((req) => {
+  h(async (req) => {
     const { reason } = parse(z.object({ reason: z.string().max(120).default('Driver’s plans changed') }), req.body ?? {})
     const r = assertDriver(param(req, 'id'), meId(req))
     if (r.status !== 'scheduled') throw new HttpError(409, 'Only scheduled rides can be cancelled.')
     const affected = new Set<string>([meId(req)])
     tx(() => cancelRideInternal(String(r.id), reason, affected))
+    await flushRefunds()
     sync(affected)
     broadcastSync()
   }),
@@ -525,7 +599,7 @@ api.post(
 api.post(
   '/rides/:id/complete',
   requireOnboarded,
-  h((req) => {
+  h(async (req) => {
     const r = assertDriver(param(req, 'id'), meId(req))
     if (r.status !== 'in_progress') throw new HttpError(409, 'Start the ride before completing it.')
     tx(() => {
@@ -536,10 +610,12 @@ api.post(
           notify(String(b.rider_id), 'system', 'You’ve arrived', `How was your ride with ${first(String(me(req).name))}? Tap to rate.`, `/live/${b.id}`)
         } else {
           run(`UPDATE bookings SET status = 'cancelled', cancel_reason = 'Not picked up', updated_at = ? WHERE id = ?`, nowIso(), b.id)
+          scheduleRefund(b)
           notify(String(b.rider_id), 'cancelled', 'Ride ended without pickup', `${first(String(me(req).name))} marked the ride complete before picking you up.`, `/trip/${b.id}`)
         }
       }
     })
+    await flushRefunds()
     sync(rideParticipants(String(r.id)))
   }),
 )
@@ -650,6 +726,7 @@ api.post(
     if (role !== 'rider') throw new HttpError(403, 'Only the rider can do this.')
     const allowed = ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed']
     if (!allowed.includes(String(b.status))) throw new HttpError(409, 'This booking can’t be paid right now.')
+    if (b.payment_status === 'paid_online') throw new HttpError(409, 'This ride is already paid online.')
     if (p.method === 'upi' && !one(`SELECT upi_id FROM users WHERE id = ? AND upi_id IS NOT NULL AND upi_id != ''`, r.driver_id))
       throw new HttpError(409, 'The driver hasn’t added a UPI ID. Choose cash, or message them.')
     const status = p.method === 'upi' ? 'marked_paid' : 'unpaid'
@@ -669,12 +746,97 @@ api.post(
   }),
 )
 
+/* ---- Online payment (Razorpay) -------------------------------------------- */
+
+function markPaidOnline(bookingId: string, orderId: string, paymentId: string) {
+  const b = bookingRow(bookingId)
+  if (b.payment_status === 'paid_online' || b.payment_status === 'refunded') return false
+  const r = rideRow(String(b.ride_id))
+  run(
+    `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = 'online', payment_status = 'paid_online',
+       gateway_order_id = ?, gateway_payment_id = ?, payment_ref = ?, paid_at = ?, updated_at = ? WHERE id = ?`,
+    orderId,
+    paymentId,
+    paymentId,
+    nowIso(),
+    nowIso(),
+    bookingId,
+  )
+  const rider = first(String(one(`SELECT name FROM users WHERE id = ?`, b.rider_id)?.name ?? 'Rider'))
+  systemMessage(bookingId, `${rider} paid ${money(Number(b.fare))} online.`)
+  notify(String(r.driver_id), 'payment', `${rider} paid online`, `${money(Number(b.fare))} received through RideSync for this ride.`, `/drive/${r.id}`)
+  notify(String(b.rider_id), 'payment', 'Payment successful', `${money(Number(b.fare))} paid · seat confirmed.`, `/trip/${bookingId}`)
+  sync([String(r.driver_id), String(b.rider_id)])
+  // A cancellation may have landed while the rider was paying: refund straight away.
+  const after = bookingRow(bookingId)
+  if (after.status === 'cancelled' || after.status === 'rejected') {
+    scheduleRefund(after)
+    void flushRefunds()
+  }
+  return true
+}
+
+api.post(
+  '/bookings/:id/pay/online',
+  requireOnboarded,
+  h(async (req) => {
+    if (!razorpayConfigured()) throw new HttpError(404, 'Online payments aren’t set up on this server.')
+    const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role !== 'rider') throw new HttpError(403, 'Only the rider can pay.')
+    if (b.payment_status === 'paid_online') throw new HttpError(409, 'This ride is already paid.')
+    if (!['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(String(b.status))) throw new HttpError(409, 'This booking can’t be paid right now.')
+    const order = await createOrder(Number(b.fare), String(b.id), { booking: String(b.id), ride: String(r.id) })
+    run(`UPDATE bookings SET gateway_order_id = ? WHERE id = ?`, order.id, b.id)
+    const driver = one(`SELECT name FROM users WHERE id = ?`, r.driver_id)
+    return {
+      keyId: env.razorpay.keyId,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      description: `Ride with ${driver?.name ?? 'driver'} · ${JSON.parse(String(b.pickup)).name} → ${JSON.parse(String(b.drop_place)).name}`,
+      prefill: { name: String(me(req).name), email: String(me(req).email), contact: String(me(req).phone ?? '') },
+    }
+  }),
+)
+
+api.post(
+  '/bookings/:id/pay/online/verify',
+  requireOnboarded,
+  h((req) => {
+    const p = parse(z.object({ razorpay_order_id: z.string().max(60), razorpay_payment_id: z.string().max(60), razorpay_signature: z.string().max(200) }), req.body)
+    const { b, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role !== 'rider') throw new HttpError(403, 'Only the rider can pay.')
+    if (p.razorpay_order_id !== b.gateway_order_id) throw new HttpError(400, 'This payment doesn’t match your booking.')
+    if (!verifyPaymentSignature(p.razorpay_order_id, p.razorpay_payment_id, p.razorpay_signature)) throw new HttpError(400, 'We couldn’t verify this payment. If money was taken, it will be refunded automatically.')
+    markPaidOnline(String(b.id), p.razorpay_order_id, p.razorpay_payment_id)
+    return { ok: true }
+  }),
+)
+
+/** Razorpay webhook — confirms payments even if the rider closed the tab. Mounted with a raw body in app.ts. */
+export async function razorpayWebhook(req: Request, res: Response) {
+  const sig = req.get('x-razorpay-signature') ?? ''
+  if (!Buffer.isBuffer(req.body) || !verifyWebhookSignature(req.body, sig)) return res.status(400).json({ error: 'Bad signature' })
+  try {
+    const event = JSON.parse(req.body.toString('utf8')) as { event: string; payload?: { payment?: { entity?: { id: string; order_id: string; notes?: { booking?: string } } } } }
+    const pay = event.payload?.payment?.entity
+    if ((event.event === 'payment.captured' || event.event === 'order.paid') && pay?.order_id) {
+      const b = one(`SELECT id FROM bookings WHERE gateway_order_id = ?`, pay.order_id)
+      if (b) markPaidOnline(String(b.id), pay.order_id, pay.id)
+    }
+  } catch (e) {
+    console.error('[ridesync] webhook error', e)
+  }
+  res.json({ ok: true })
+}
+
 api.post(
   '/bookings/:id/payment-received',
   requireOnboarded,
   h((req) => {
     const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
     if (role !== 'driver') throw new HttpError(403, 'Only the driver can confirm payment.')
+    if (b.payment_status === 'paid_online' || b.payment_status === 'refunded') throw new HttpError(409, 'This ride was paid online through RideSync.')
     if (!HOLDING.includes(b.status as never)) throw new HttpError(409, 'This booking isn’t active.')
     run(`UPDATE bookings SET payment_status = 'received', payment_method = COALESCE(payment_method, 'cash'), paid_at = COALESCE(paid_at, ?), updated_at = ? WHERE id = ?`, nowIso(), nowIso(), b.id)
     notify(String(b.rider_id), 'payment', 'Payment received', `${first(String(me(req).name))} confirmed your ${money(Number(b.fare))} payment.`, `/trip/${b.id}`)
@@ -685,19 +847,22 @@ api.post(
 api.post(
   '/bookings/:id/cancel',
   requireOnboarded,
-  h((req) => {
+  h(async (req) => {
     const { reason } = parse(z.object({ reason: z.string().max(120).default('Plans changed') }), req.body ?? {})
     const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
     const cancellable = role === 'rider' ? ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived'] : ['accepted', 'confirmed']
     if (!cancellable.includes(String(b.status))) throw new HttpError(409, 'This booking can’t be cancelled now.')
     run(`UPDATE bookings SET status = 'cancelled', cancelled_by = ?, cancel_reason = ?, updated_at = ? WHERE id = ?`, role, reason, nowIso(), b.id)
-    const paid = b.payment_status !== 'unpaid'
+    scheduleRefund(b)
+    const direct = paidDirectly(b)
+    const online = b.payment_status === 'paid_online'
     if (role === 'rider') {
       if (b.status !== 'pending')
-        notify(String(r.driver_id), 'cancelled', `${first(String(me(req).name))} cancelled their seat`, `${reason}.${paid ? ' They paid by UPI — please refund them.' : ''}`, `/drive/${r.id}`)
+        notify(String(r.driver_id), 'cancelled', `${first(String(me(req).name))} cancelled their seat`, `${reason}.${direct ? ' They paid you by UPI — please refund them.' : online ? ' Their online payment is refunded automatically.' : ''}`, `/drive/${r.id}`)
     } else {
-      notify(String(b.rider_id), 'cancelled', `${first(String(me(req).name))} removed you from the ride`, `${reason}.${paid ? ' Ask the driver to refund your UPI payment.' : ''}`, `/trip/${b.id}`)
+      notify(String(b.rider_id), 'cancelled', `${first(String(me(req).name))} removed you from the ride`, `${reason}.${direct ? ' Ask the driver to refund your UPI payment.' : online ? ' Your online payment will be refunded automatically.' : ''}`, `/trip/${b.id}`)
     }
+    await flushRefunds()
     sync(rideParticipants(String(r.id)))
     broadcastSync()
   }),

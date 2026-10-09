@@ -91,8 +91,10 @@ export type BookingStatus =
   | 'completed'
   | 'cancelled'
 
-export type PaymentMethodKind = 'upi' | 'cash'
-export type PaymentStatus = 'unpaid' | 'marked_paid' | 'received'
+/** upi = direct to the driver's UPI ID · cash = at pickup · online = through the payment gateway (Razorpay) */
+export type PaymentMethodKind = 'upi' | 'cash' | 'online'
+/** paid_online = collected by the gateway · refunded = returned by the gateway after a cancellation */
+export type PaymentStatus = 'unpaid' | 'marked_paid' | 'received' | 'paid_online' | 'refunded'
 
 export type Booking = {
   id: string

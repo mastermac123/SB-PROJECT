@@ -2,6 +2,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { LatLng } from '@/lib/types'
+import { useConfig } from '@/services/api'
 
 export type MapMarker = {
   id: string
@@ -74,6 +75,8 @@ export function MapView({
   const map = useRef<L.Map | null>(null)
   const routeLayer = useRef<L.LayerGroup | null>(null)
   const markerRefs = useRef(new Map<string, { marker: L.Marker; sig: string }>())
+  const tileLayer = useRef<L.TileLayer | null>(null)
+  const tiles = useConfig().data?.maps?.tiles
 
   // Create map once
   useEffect(() => {
@@ -90,12 +93,6 @@ export function MapView({
       fadeAnimation: true,
     }).setView([center.lat, center.lng], zoom)
     m.attributionControl.setPrefix(false)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
-      detectRetina: true,
-    }).addTo(m)
     routeLayer.current = L.layerGroup().addTo(m)
     map.current = m
     const ro = new ResizeObserver(() => m.invalidateSize({ pan: false }))
@@ -108,6 +105,17 @@ export function MapView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Tiles (provider comes from the server config: MapTiler when a key is set, else CARTO/OpenStreetMap)
+  const tileUrl = tiles?.url ?? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
+  const tileAttribution =
+    tiles?.attribution ?? '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    tileLayer.current?.remove()
+    tileLayer.current = L.tileLayer(tileUrl, { attribution: tileAttribution, subdomains: 'abcd', maxZoom: 19 }).addTo(m)
+  }, [tileUrl, tileAttribution])
 
   // Routes
   const routeSig = routes.map((r) => `${r.id}:${r.kind}:${r.coords.length}:${r.coords[0]?.lat.toFixed(4)}:${r.coords.at(-1)?.lat.toFixed(4)}`).join('|')

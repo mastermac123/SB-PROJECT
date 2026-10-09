@@ -2,7 +2,7 @@ import { Building2, GraduationCap, LocateFixed, MapPin, Plane, Search, TrainFron
 import { useEffect, useRef, useState } from 'react'
 import { searchPlaces } from '@/data/places'
 import type { Place } from '@/lib/types'
-import { ApiError, requestLocation } from '@/services/api'
+import { ApiError, requestLocation, searchPlacesRemote } from '@/services/api'
 import { ModalSheet } from './Sheet'
 import { Field, IconButton, ListRow, Notice } from './ui'
 
@@ -12,22 +12,6 @@ const KIND_ICON = {
   airport: <Plane />,
   area: <Building2 />,
   custom: <MapPin />,
-}
-
-/** Search OpenStreetMap (Nominatim) for places beyond the curated list. */
-async function searchOSM(q: string, signal: AbortSignal): Promise<Place[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&viewbox=72.7,19.45,73.2,18.85&bounded=1&q=${encodeURIComponent(q)}`
-  const res = await fetch(url, { signal, headers: { 'Accept-Language': 'en' } })
-  if (!res.ok) return []
-  const rows = (await res.json()) as { place_id: number; lat: string; lon: string; name: string; display_name: string }[]
-  return rows.map((r) => ({
-    id: `osm-${r.place_id}`,
-    name: r.name || r.display_name.split(',')[0],
-    area: r.display_name.split(',').slice(1, 3).join(',').trim(),
-    lat: Number(r.lat),
-    lng: Number(r.lon),
-    kind: 'custom' as const,
-  }))
 }
 
 export function PlacePicker({
@@ -61,8 +45,8 @@ export function PlacePicker({
     const ctrl = new AbortController()
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
-      searchOSM(q, ctrl.signal)
-        .then(setRemote)
+      searchPlacesRemote(q)
+        .then((r) => !ctrl.signal.aborted && setRemote(r))
         .catch(() => {})
     }, 450)
     return () => {

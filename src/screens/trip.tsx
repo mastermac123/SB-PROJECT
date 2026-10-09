@@ -29,6 +29,7 @@ const CANCEL_REASONS = ['My plans changed', 'Found another ride', 'Driver asked 
 
 export function paymentLabel(b: Booking) {
   if (!b.paymentMethod) return 'Not paid yet'
+  if (b.paymentMethod === 'online') return b.paymentStatus === 'refunded' ? 'Paid online · refunded' : 'Paid online'
   if (b.paymentMethod === 'cash') return b.paymentStatus === 'received' ? 'Paid in cash' : 'Cash at pickup'
   return b.paymentStatus === 'received' ? 'Paid by UPI · received' : `Paid by UPI${b.paymentRef ? ` · ref ${b.paymentRef}` : ''}`
 }
@@ -80,7 +81,7 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
         </div>
         <div className="row row--between t-sm t-muted" style={{ marginTop: 4 }}>
           <span>{paymentLabel(booking)}</span>
-          {booking.paymentStatus === 'received' && (
+          {(booking.paymentStatus === 'received' || booking.paymentStatus === 'paid_online') && (
             <Badge tone="success" icon={<Check />}>
               Received
             </Badge>
@@ -169,7 +170,7 @@ export function TripStatus() {
           <Hero
             mark={<div className="result-mark result-mark--error"><CircleX /></div>}
             title="Ride cancelled"
-            body={booking.cancelledBy === 'rider' ? `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.` : `${booking.cancelReason ?? 'The ride was cancelled'}.${booking.paymentStatus !== 'unpaid' ? ` Ask ${name} to refund your UPI payment.` : ''}`}
+            body={`${booking.cancelledBy === 'rider' ? `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.` : `${booking.cancelReason ?? 'The ride was cancelled'}.`}${booking.paymentStatus === 'refunded' ? ' Your online payment has been refunded (5–7 working days).' : booking.paymentStatus === 'paid_online' ? ' Your online refund is being processed.' : booking.cancelledBy !== 'rider' && booking.paymentStatus !== 'unpaid' ? ` Ask ${name} to refund your UPI payment.` : ''}`}
           />
         )
       case 'completed':
@@ -255,7 +256,7 @@ export function TripStatus() {
         {booking.status === 'accepted' && (
           <div style={{ marginBottom: 16 }}>
             <Notice tone="info" icon={<Clock />}>
-              Pay {name} directly — by UPI now or in cash at pickup. RideSync doesn’t hold your money.
+              Pay to lock in your seat — online, by UPI to {name}, or in cash at pickup.
             </Notice>
           </div>
         )}
@@ -271,7 +272,7 @@ export function TripStatus() {
         body={
           booking.status === 'pending'
             ? `${name} will no longer see your request.`
-            : `${name} will be notified.${booking.paymentStatus !== 'unpaid' ? ' Since you’ve paid by UPI, ask them to refund you.' : ''} Frequent cancellations lower your reliability score.`
+            : `${name} will be notified.${booking.paymentStatus === 'paid_online' ? ' Your online payment will be refunded automatically.' : booking.paymentStatus !== 'unpaid' ? ' Since you’ve paid by UPI, ask them to refund you.' : ''} Frequent cancellations lower your reliability score.`
         }
         confirmLabel={booking.status === 'pending' ? 'Withdraw request' : 'Cancel seat'}
         cancelLabel="Keep it"

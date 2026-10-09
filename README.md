@@ -70,6 +70,45 @@ MAIL_FROM="RideSync <your.address@gmail.com>"
 
 Brevo, Resend, Zoho and Amazon SES work the same way and scale better. Codes expire after 10 minutes, are single-use, and are rate-limited. Send yourself a test code first: Microsoft 365 can put mail from new senders in **Junk**. If it does, mark it "Not junk"; Brevo usually delivers more reliably than Gmail.
 
+## 3b. The easy way to set up email, payments and maps
+
+Run the setup helper. It asks for each key, saves it to `.env`, and **sends you a real test email** (or checks your Razorpay keys) so you know it works:
+
+- **Windows:** double-click **`setup.bat`**
+- **Mac/Linux:** run `npm run setup`
+
+Then close the black RideSync window and start it again.
+
+## 3c. Online payments with Razorpay (optional)
+
+1. Sign up at https://razorpay.com. **Test mode** works immediately, with no business documents.
+2. In the Dashboard (Test mode), go to **Account & Settings → API Keys → Generate Test Key**.
+3. Put the Key Id and Key Secret in `.env`, or use the setup helper:
+   ```
+   RAZORPAY_KEY_ID=rzp_test_xxxxxxxx
+   RAZORPAY_KEY_SECRET=xxxxxxxx
+   ```
+4. Restart RideSync. Riders now see **Pay online** (UPI, cards, netbanking) first. In test mode, pay with UPI ID `success@razorpay` or card `4111 1111 1111 1111`.
+
+How it works:
+
+- The server creates the order and verifies Razorpay's signature before confirming a seat.
+- If a ride is cancelled, the money is **refunded automatically**.
+- When you're online, add a webhook so payments confirm even if a rider closes the tab: Dashboard → **Webhooks** → URL `https://your-site/api/payments/razorpay/webhook`, events `payment.captured` and `order.paid`, and put the secret in `RAZORPAY_WEBHOOK_SECRET`.
+- Online payments land in **your** Razorpay account. Pay drivers out from there, or apply for Razorpay Route to split payments automatically.
+- Live keys (real money) need Razorpay's business verification (KYC).
+
+Riders can still pay the driver directly by UPI, or in cash.
+
+## 3d. Maps (optional keys)
+
+Maps, place search and routes work with **no keys**, using free OpenStreetMap services. For better reliability with many users, add free keys:
+
+- **MapTiler** (map tiles and place search): sign up at https://cloud.maptiler.com, copy your key, and set `MAPTILER_KEY`.
+- **OpenRouteService** (driving routes): sign up at https://openrouteservice.org, request a token, and set `ORS_API_KEY`.
+
+The terminal shows which map services are active when RideSync starts.
+
 ## 4. Put it online
 
 The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.
@@ -123,12 +162,13 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 23 tests, including a full two-account ride and Microsoft sign-in checks
+npm test          # 29 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds and webhooks
 npm run typecheck
 ```
 
 The tests cover:
 
+- Razorpay: order amount, forged signatures, webhook confirmation, automatic refunds
 - Microsoft sign-in: wrong college directory, non-college emails, tampered or replayed sign-ins
 - domain enforcement and look-alike domains
 - the CSRF check

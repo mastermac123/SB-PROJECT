@@ -29,6 +29,16 @@ export const env = {
     from: process.env.MAIL_FROM || '',
   },
   osrmUrl: process.env.OSRM_URL || 'https://router.project-osrm.org',
+  /** Optional: OpenRouteService key for driving routes (free at openrouteservice.org). */
+  orsKey: process.env.ORS_API_KEY || '',
+  /** Optional: MapTiler key for map tiles + place search (free at maptiler.com). */
+  maptilerKey: process.env.MAPTILER_KEY || '',
+  /** Optional: Razorpay payment gateway (test keys start with rzp_test_). */
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
   /** Local development only: sign in without Google/email. Refused in production. */
   devLogin: bool(process.env.DEV_LOGIN) && process.env.NODE_ENV !== 'production',
   /** Public address of the site, e.g. https://ridesync.onrender.com (used for sign-in redirects). */
@@ -38,3 +48,4 @@ export const env = {
 export const smtpConfigured = () => !!(env.smtp.host && env.smtp.user && env.smtp.pass && env.smtp.from)
 
 export const microsoftConfigured = () => !!(env.microsoft.clientId && env.microsoft.clientSecret)
+export const razorpayConfigured = () => !!(env.razorpay.keyId && env.razorpay.keySecret)

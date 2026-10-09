@@ -23,3 +23,14 @@ export async function sendLoginCode(email: string, code: string) {
     </div>`,
   })
 }
+
+/** Check the SMTP login at startup so problems show up in the terminal, not at a student's first login. */
+export async function verifyMail() {
+  if (!transport) return
+  try {
+    await transport.verify()
+    console.log(`[ridesync] email ready — login codes are sent from ${env.smtp.from}`)
+  } catch (e) {
+    console.error(`[ridesync] EMAIL NOT WORKING: ${(e as Error).message}\n           Run "npm run setup" (or setup.bat) to fix your email settings.`)
+  }
+}

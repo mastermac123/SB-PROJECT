@@ -132,6 +132,15 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, created_at);
 `)
 
+// Additive migrations for databases created by earlier versions.
+function addColumn(table: string, column: string, type: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+}
+addColumn('bookings', 'gateway_order_id', 'TEXT')
+addColumn('bookings', 'gateway_payment_id', 'TEXT')
+addColumn('bookings', 'refund_id', 'TEXT')
+
 export type Row = Record<string, unknown>
 
 export const one = <T = Row>(sql: string, ...params: unknown[]) => db.prepare(sql).get(...(params as never[])) as T | undefined

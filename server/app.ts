@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { loadUser } from './auth'
 import { env } from './env'
 import { HttpError } from './logic'
-import { api } from './routes'
+import { api, razorpayWebhook } from './routes'
 
 export function createApp() {
   const app = express()
@@ -18,6 +18,9 @@ export function createApp() {
     res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()')
     next()
   })
+
+  // Payment gateway webhook: needs the raw body for signature checks, and comes from Razorpay (no CSRF header).
+  app.post('/api/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '200kb' }), (req, res) => void razorpayWebhook(req, res))
 
   app.use('/api', express.json({ limit: '400kb' }))
   app.use('/api', loadUser)

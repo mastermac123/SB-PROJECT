@@ -159,9 +159,9 @@ export function LiveRide() {
           <span>
             {money(booking.fare)} · {paymentLabel(booking)}
           </span>
-          {booking.paymentMethod === 'cash' && booking.paymentStatus !== 'received' && d.driverUpiId && (
+          {booking.paymentMethod === 'cash' && booking.paymentStatus === 'unpaid' && (
             <button className="t-strong t-primary" onClick={() => nav(`/pay/${booking.id}`)}>
-              Pay by UPI
+              Pay now
             </button>
           )}
         </div>
