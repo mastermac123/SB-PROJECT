@@ -446,8 +446,14 @@ class AppConfig {
 
   /// Set when the server has Razorpay keys → "Pay online" is offered.
   final String? razorpayKeyId;
+
+  /// Map tiles chosen by the server (MapTiler when it has a key, else CARTO/OpenStreetMap).
+  final String? tileUrl;
+  final String? tileAttribution;
   AppConfig.fromJson(Map<String, dynamic> j)
       : microsoftLogin = j['microsoftLogin'] == true,
+        tileUrl = _ns(((j['maps'] as Map?)?['tiles'] as Map?)?['url']),
+        tileAttribution = _ns(((j['maps'] as Map?)?['tiles'] as Map?)?['attribution']),
         razorpayKeyId = _ns(j['razorpayKeyId']),
         allowedDomain = _s(j['allowedDomain']).isEmpty ? 'vit.edu.in' : _s(j['allowedDomain']),
         emailLogin = j['emailLogin'] == true,

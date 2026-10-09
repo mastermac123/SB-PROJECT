@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:provider/provider.dart';
 
 import '../api/models.dart';
 import '../data/places.dart';
+import '../state/session.dart';
 import '../theme.dart';
 
 /// Built with --dart-define=GOOGLE_MAPS=true (and a Google Maps key in the
@@ -378,6 +380,11 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     final route = _partial(widget.route, _routeAnim.value).map((p) => ll.LatLng(p.lat, p.lng)).toList();
     final carAt = _carShown;
     final pickup = widget.pins.where((p) => p.kind == 'pickup').firstOrNull;
+    // MapTiler when the server has a key; free CARTO/OpenStreetMap otherwise.
+    final cfg = context.select<Session, (String?, String?)>((s) => (s.config?.tileUrl, s.config?.tileAttribution));
+    const carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png';
+    final tileUrl = cfg.$1 ?? carto;
+    final credit = (cfg.$2 ?? '© OpenStreetMap · CARTO').replaceAll(RegExp(r'<[^>]+>'), '');
     return fm.FlutterMap(
       mapController: _osm,
       options: fm.MapOptions(
@@ -391,7 +398,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       ),
       children: [
         fm.TileLayer(
-          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png',
+          urlTemplate: tileUrl,
           subdomains: const ['a', 'b', 'c', 'd'],
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
@@ -427,7 +434,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
             if (p.kind != 'car') fm.Marker(point: ll.LatLng(p.at.lat, p.at.lng), width: 20, height: 20, child: _marker(p)),
           if (carAt != null) fm.Marker(point: ll.LatLng(carAt.lat, carAt.lng), width: 38, height: 38, child: _marker(const MapPin(LatLngPoint(0, 0), 'car'), heading: _headingShown)),
         ]),
-        const fm.SimpleAttributionWidget(source: Text('© OpenStreetMap · CARTO')),
+        fm.SimpleAttributionWidget(source: Text(credit)),
       ],
     );
   }
