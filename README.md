@@ -16,29 +16,34 @@ cp .env.example .env      # on Windows: copy .env.example .env
 npm run dev               # opens http://localhost:5173
 ```
 
-To try two accounts on one computer before setting up Google or email, set `DEV_LOGIN=true` in `.env`. A "Local development sign-in" box then appears on the login page. Use a normal window for one student and a private/incognito window for the other. This box **never** works in production.
+To try two accounts on one computer before setting up Microsoft or email, set `DEV_LOGIN=true` in `.env`. A "Local development sign-in" box then appears on the login page. Use a normal window for one student and a private/incognito window for the other. This box **never** works in production.
 
 Login codes are printed in the terminal while email isn't set up (local development only).
 
 To test on your phone, connect it to the same Wi-Fi and open the "Network" address that `npm run dev` prints. Phones only allow GPS on `https://` pages or `localhost`, so test live location after deploying.
 
-## 2. Turn on Google sign-in (recommended)
+## 2. Turn on "Sign in with Microsoft" (recommended, free)
 
-1. Go to https://console.cloud.google.com/apis/credentials and create a project.
-2. Open **OAuth consent screen**, choose **External**, and fill in the app name and email.
-3. Open **Credentials → Create credentials → OAuth client ID**. Choose type **Web application**.
-4. Under **Authorised JavaScript origins**, add `http://localhost:5173` and your live site, e.g. `https://ridesync.onrender.com`.
-5. Copy the Client ID into `.env`:
+`@vit.edu.in` accounts are Microsoft 365 (Outlook) accounts, so students sign in with the same login they use for college email. Microsoft charges nothing for this.
 
-   ```
-   GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
-   ```
+1. Go to https://entra.microsoft.com and sign in with any Microsoft account (a personal Outlook/Hotmail account is fine).
+2. Open **Applications → App registrations → New registration**.
+   - **Name:** `RideSync`
+   - **Supported account types:** *Accounts in any organizational directory (Any Microsoft Entra ID tenant – Multitenant)*
+   - **Redirect URI:** platform **Web**, value `http://localhost:5173/api/auth/microsoft/callback`
+3. After it's created, copy the **Application (client) ID** into `MICROSOFT_CLIENT_ID`.
+4. Open **Certificates & secrets → New client secret**. Copy the **Value** (not the ID) into `MICROSOFT_CLIENT_SECRET`. Secrets expire; set a reminder to renew it.
+5. When you deploy, add your live callback under **Authentication → Redirect URIs**, e.g. `https://your-app.onrender.com/api/auth/microsoft/callback`, and set `PUBLIC_URL=https://your-app.onrender.com`.
 
-Google's sign-in popup is told to prefer `vit.edu.in` accounts. The server then checks the verified email itself and rejects anything that doesn't end in `@vit.edu.in`.
+How the check works: the server finds VIT's Microsoft directory from the `vit.edu.in` domain and only accepts accounts from that directory, and the email must also end in `@vit.edu.in`. Personal Outlook or Hotmail accounts, and other colleges, are rejected.
+
+**If students see "Need admin approval":** some colleges only allow apps their IT team has approved. Ask VIT IT to grant consent for "RideSync" (it only reads your name and email). Until then, students can use the email code below.
+
+Google sign-in is also supported (`GOOGLE_CLIENT_ID`) for colleges whose email runs on Google; leave it empty for VIT.
 
 ## 3. Turn on email login codes (works for every student)
 
-Students who don't use Google with their college email can sign in with a 6-digit code sent to their `@vit.edu.in` inbox. Add any SMTP provider to `.env`. Gmail example:
+A backup that works even before IT approval: a 6-digit code sent to the student's `@vit.edu.in` Outlook inbox. Add any SMTP provider to `.env`. Gmail example:
 
 ```
 SMTP_HOST=smtp.gmail.com
@@ -48,13 +53,13 @@ SMTP_PASS=your-16-char-app-password      # Google Account → Security → App p
 MAIL_FROM="RideSync <your.address@gmail.com>"
 ```
 
-Brevo, Resend, Zoho and Amazon SES work the same way and scale better. Codes expire after 10 minutes, are single-use, and are rate-limited.
+Brevo, Resend, Zoho and Amazon SES work the same way and scale better. Codes expire after 10 minutes, are single-use, and are rate-limited. Send yourself a test code first: Microsoft 365 can put mail from new senders in **Junk**. If it does, mark it "Not junk"; Brevo usually delivers more reliably than Gmail.
 
 ## 4. Put it online
 
 The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.
 
-**Render (simplest):** push this repo to GitHub. In Render, choose **New → Blueprint** and pick the repo; `render.yaml` sets everything up, including a 1 GB disk. Enter `GOOGLE_CLIENT_ID` and the SMTP values when Render asks. Then add the Render URL to the Google "Authorised JavaScript origins".
+**Render (simplest):** push this repo to GitHub. In Render, choose **New → Blueprint** and pick the repo; `render.yaml` sets everything up, including a 1 GB disk. Enter `PUBLIC_URL`, the Microsoft values and the SMTP values when Render asks. Then add the live callback URL to your Microsoft app's Redirect URIs.
 
 **Any Docker host** (Railway, Fly.io, a VPS):
 
@@ -73,7 +78,7 @@ Production must be served over **HTTPS**. Login cookies are marked secure, and p
 
 | Step | What happens |
 |---|---|
-| Sign in | Google sign-in or an email code. The server verifies the email ends in `@vit.edu.in`, creates the account on first login, and sets a 30-day httpOnly session cookie. |
+| Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 30-day httpOnly session cookie. |
 | Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
 | Offer a Ride | The server gets the road route (OSRM), suggests a cost-share and enforces the 1.5× cap. Every online student's search and Home feed refresh straight away. |
 | Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
@@ -88,7 +93,8 @@ Also included: chat for each booking, in-app and browser notifications, an SOS s
 
 ```
 server/            Node API (Express + built-in node:sqlite)
-  auth.ts            Google ID-token check, email codes, sessions, domain rule
+  auth.ts            email codes, sessions, domain rule (+ Google)
+  microsoft.ts       Sign in with Microsoft (VIT tenant only)
   routes.ts          rides, matching, bookings, payments, chat, notifications, live location
   db.ts              schema
   events.ts          Server-Sent Events for live updates
@@ -102,12 +108,13 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 17 tests, including a full two-account ride against the real API
+npm test          # 23 tests, including a full two-account ride and Microsoft sign-in checks
 npm run typecheck
 ```
 
 The tests cover:
 
+- Microsoft sign-in: wrong college directory, non-college emails, tampered or replayed sign-ins
 - domain enforcement and look-alike domains
 - the CSRF check
 - email codes

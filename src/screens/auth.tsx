@@ -202,6 +202,30 @@ function GoogleButton({ clientId, domain, onSuccess, onError }: { clientId: stri
 }
 
 /* ==========================================================================
+   Microsoft (college Outlook / Microsoft 365 accounts)
+   ========================================================================== */
+
+function MicrosoftButton({ from }: { from?: string }) {
+  const [going, setGoing] = useState(false)
+  return (
+    <a
+      className={cx('ms-btn', going && 'is-loading')}
+      href={`/api/auth/microsoft/start${from ? `?from=${encodeURIComponent(from)}` : ''}`}
+      onClick={() => setGoing(true)}
+      aria-busy={going || undefined}
+    >
+      <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden>
+        <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+        <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+        <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+        <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+      </svg>
+      {going ? 'Opening Microsoft…' : 'Sign in with Microsoft'}
+    </a>
+  )
+}
+
+/* ==========================================================================
    Login / sign up (one flow — accounts are created on first sign-in)
    ========================================================================== */
 
@@ -217,7 +241,7 @@ export function Login() {
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [formError, setFormError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(() => new URLSearchParams(loc.search).get('error'))
   const [loading, setLoading] = useState(false)
 
   if (user) return <Navigate to={user.onboarded ? from ?? '/home' : '/onboarding'} replace />
@@ -257,8 +281,9 @@ export function Login() {
             <div className="stack gap-4">
               {formError && <Notice tone="error">{formError}</Notice>}
               {config.error && <Notice tone="error">Can’t reach the RideSync server. Check your connection and refresh.</Notice>}
+              {cfg?.microsoftLogin && <MicrosoftButton from={from} />}
               {cfg?.googleClientId && <GoogleButton clientId={cfg.googleClientId} domain={domain} onSuccess={done} onError={setFormError} />}
-              {cfg?.googleClientId && cfg.emailLogin && <div className="auth__divider">or use a code</div>}
+              {(cfg?.microsoftLogin || cfg?.googleClientId) && cfg.emailLogin && <div className="auth__divider">or get a code by email</div>}
               {cfg?.emailLogin && (
                 <form className="stack gap-4" onSubmit={sendCode} noValidate>
                   <Field
@@ -275,14 +300,14 @@ export function Login() {
                     }}
                     error={error}
                   />
-                  <Button type="submit" size="lg" block variant={cfg.googleClientId ? 'secondary' : 'primary'} loading={loading} trailing={<ArrowRight />}>
+                  <Button type="submit" size="lg" block variant={cfg.googleClientId || cfg.microsoftLogin ? 'secondary' : 'primary'} loading={loading} trailing={<ArrowRight />}>
                     Email me a login code
                   </Button>
                 </form>
               )}
-              {cfg && !cfg.googleClientId && !cfg.emailLogin && (
+              {cfg && !cfg.googleClientId && !cfg.microsoftLogin && !cfg.emailLogin && (
                 <Notice tone="warning" title="Sign-in isn’t set up yet">
-                  The server needs GOOGLE_CLIENT_ID or SMTP settings. See the README.
+                  The server needs Microsoft sign-in or SMTP settings. See the README.
                 </Notice>
               )}
               {cfg?.devLogin && <DevLogin domain={domain} onDone={done} />}

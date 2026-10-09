@@ -12,7 +12,11 @@ services:
     envVars:
       - key: ALLOWED_EMAIL_DOMAIN
         value: vit.edu.in
-      - key: GOOGLE_CLIENT_ID
+      - key: PUBLIC_URL
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
         sync: false
       - key: SMTP_HOST
         sync: false

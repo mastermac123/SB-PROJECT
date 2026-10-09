@@ -38,6 +38,8 @@ import {
   vehicleFor,
 } from './logic'
 import { getRoute } from './routing'
+import { microsoftCallback, microsoftStart } from './microsoft'
+import { microsoftConfigured } from './env'
 
 export const api = Router()
 
@@ -85,8 +87,18 @@ const QueryZ = z.object({
 /* ---- Config & auth -------------------------------------------------------- */
 
 api.get('/config', (_req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, emailLogin: otpEnabled(), devLogin: env.devLogin })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), devLogin: env.devLogin })
 })
+
+// Full-page redirects (GET), so they work in every mobile browser.
+api.get(
+  '/auth/microsoft/start',
+  h(async (req, res) => {
+    if (!microsoftConfigured()) throw new HttpError(404, 'Microsoft sign-in isn’t configured on this server.')
+    await microsoftStart(req, res)
+  }),
+)
+api.get('/auth/microsoft/callback', h((req, res) => microsoftCallback(req, res)))
 
 api.post(
   '/auth/google',
