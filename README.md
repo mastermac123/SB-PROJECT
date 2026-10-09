@@ -35,7 +35,15 @@ To try two accounts on one computer before setting up Microsoft or email, set `D
 
 Login codes are printed in the terminal while email isn't set up (local development only).
 
-To test on your phone, connect it to the same Wi-Fi and open the "Network" address that `npm run dev` prints. Phones only allow GPS on `https://` pages or `localhost`, so test live location after deploying.
+### Test on real phones (Android and iPhone)
+
+1. Start RideSync with `start.bat`.
+2. Double-click **`share.bat`**. The first time, it installs Cloudflare's free tunnel tool; run it again afterwards.
+3. It prints a link like `https://something.trycloudflare.com`. Open it on any phone, on any network.
+
+The link is **https**, so GPS and live location work on phones. It only works while your laptop, `start.bat` and `share.bat` are running, and it changes every time. It's for testing only; Sign in with Microsoft won't work through it, but email codes do.
+
+Same Wi-Fi only (no GPS): open the "Network" address that `npm run dev` prints.
 
 ## 2. Turn on "Sign in with Microsoft" (recommended, free)
 
