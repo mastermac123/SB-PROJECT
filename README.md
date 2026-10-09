@@ -203,7 +203,7 @@ The start.bat window shows the order in use, e.g. `pin names: Ola Maps → TomTo
 
 ### The map
 
-The website uses a **vector map with 3D buildings**: it stays sharp at every zoom and can be tilted with the **3D** button. It uses your MapTiler key, or the free OpenFreeMap map without one. If a computer can't show it (old browser, no graphics support), RideSync switches to the simple map automatically.
+The website uses a **vector map with 3D buildings**: it stays sharp at every zoom and can be tilted with the **3D** button. With an Ola Maps key it uses **Ola's Indian map style** (local landmarks and societies); otherwise your MapTiler key, or the free OpenFreeMap map. If one can't load, the next is used automatically. If a computer can't show it (old browser, no graphics support), RideSync switches to the simple map automatically.
 
 Trip details are shown **on the map**, like Ola and Uber:
 

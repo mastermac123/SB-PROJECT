@@ -51,6 +51,13 @@ export function mapsConfig() {
         },
     // Sharp vector map with 3D buildings on the website.
     vectorStyle: maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
+    // Ola Maps' Indian map style first when there's an Ola key; the one above if it can't load.
+    vectorStyles: [
+      ...(olaConfigured() ? ['https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json'] : []),
+      maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
+    ],
+    /** Ola Maps loads its map pieces in the browser, so it needs the key there (restrict it in the Ola dashboard). */
+    olaKey: olaConfigured() ? env.olaKey : null,
     search: google ? 'google' : olaConfigured() ? 'ola' : maptiler() ? 'maptiler' : 'openstreetmap',
     routing: google ? 'google' : tomtomConfigured() ? 'tomtom' : env.orsKey ? 'openrouteservice' : 'osrm',
     /** Live traffic layer: tiles come from /api/traffic/{z}/{x}/{y}.png */

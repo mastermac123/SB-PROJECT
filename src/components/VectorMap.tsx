@@ -8,8 +8,8 @@ import { markerHtml, ROUTE_STYLE, type MapViewProps } from './MapView'
 
 /**
  * Vector map (MapLibre GL): sharp at every zoom, 3D buildings when zoomed in, smooth
- * rotation/tilt, and live traffic underneath the labels. Uses the MapTiler style when the
- * server has a MapTiler key, else the free OpenFreeMap style. If WebGL or the style
+ * rotation/tilt, and live traffic underneath the labels. Uses Ola Maps (with an Ola key),
+ * MapTiler (with a MapTiler key) or the free OpenFreeMap style. If WebGL or the style
  * can't load, `onFail` switches MapView to the simple Leaflet map.
  */
 
@@ -53,6 +53,7 @@ function add3dBuildings(m: MLMap) {
 
 export default function VectorMap({
   styleUrl,
+  olaKey,
   traffic,
   onFail,
   markers = [],
@@ -64,7 +65,7 @@ export default function VectorMap({
   interactive = true,
   animateRoutes = true,
   follow,
-}: MapViewProps & { styleUrl: string; traffic?: boolean; onFail: () => void }) {
+}: MapViewProps & { styleUrl: string; olaKey?: string; traffic?: boolean; onFail: () => void }) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<MLMap | null>(null)
   const markerRefs = useRef(new Map<string, { marker: maplibregl.Marker; sig: string; pos: LatLng }>())
@@ -91,15 +92,22 @@ export default function VectorMap({
         dragRotate: interactive,
         maxPitch: 60,
         fadeDuration: 150,
+        // Ola Maps needs its key on every style, tile, font and icon request.
+        transformRequest: (url) =>
+          olaKey && url.startsWith('https://api.olamaps.io/') && !url.includes('api_key=') ? { url: `${url}${url.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(olaKey)}` } : { url },
       })
     } catch {
       return onFail()
     }
     // A style that never loads (bad key, offline) → fall back to the simple map.
     const t = window.setTimeout(() => !loaded && onFail(), 12_000)
+    // Also give up if the map's own tiles keep failing right after it opens (e.g. a rejected key).
+    let tileErrors = 0
+    const opened = Date.now()
     m.on('error', (e) => {
-      if (!loaded) {
-        console.warn('[ridesync] vector map failed, using the simple map', e.error?.message)
+      const ours = (e as { sourceId?: string }).sourceId?.startsWith('rs-')
+      if (!loaded || (!ours && Date.now() - opened < 20_000 && ++tileErrors === 8)) {
+        console.warn('[ridesync] vector map failed, trying the next map', e.error?.message)
         onFail()
       }
     })

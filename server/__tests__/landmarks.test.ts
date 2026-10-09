@@ -20,7 +20,7 @@ function mock(handler: (url: string) => unknown) {
   return urls
 }
 
-const { reverseGeocode, searchPlaces } = await import('../maps')
+const { mapsConfig, reverseGeocode, searchPlaces } = await import('../maps')
 
 describe('Building names for a dropped pin', () => {
   it('uses the nearest Ola Maps venue first', async () => {
@@ -68,5 +68,13 @@ describe('Building names for a dropped pin', () => {
         : undefined,
     )
     expect(await searchPlaces('lodha park')).toEqual([{ id: 'ola-ola:1', name: 'Lodha Park', area: 'Worli, Mumbai', lat: 19.0, lng: 72.82, kind: 'custom' }])
+  })
+
+  it('uses the Ola Maps style first for the website map', () => {
+    const c = mapsConfig()
+    expect(c.vectorStyles[0]).toContain('api.olamaps.io')
+    expect(c.vectorStyles).toHaveLength(2)
+    expect(c.olaKey).toBe('ola_test')
+    expect(c.search).toBe('ola')
   })
 })

@@ -266,6 +266,9 @@ export type AppConfig = {
     traffic?: boolean
     /** Vector map style (MapTiler with a key, else OpenFreeMap). */
     vectorStyle?: string
+    /** Vector styles to try in order (Ola Maps first when set up). */
+    vectorStyles?: string[]
+    olaKey?: string | null
   }
 }
 

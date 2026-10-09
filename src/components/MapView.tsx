@@ -9,8 +9,8 @@ import { googleMapsFailed, onGoogleMapsFailed } from './googleLoader'
 const GoogleMap = lazy(() => import('./GoogleMap'))
 const VectorMap = lazy(() => import('./VectorMap'))
 
-// Once the vector map fails on this device (no WebGL, style blocked), use the simple map for the session.
-let vectorFailed = false
+// Vector styles that failed on this device this session (no WebGL, style blocked, bad key).
+let vectorFailures = 0
 
 const CARTO_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
 
@@ -89,7 +89,7 @@ export function MapView(props: MapViewProps) {
   const config = useConfig().data
   const [failed, setFailed] = useState(googleMapsFailed)
   useEffect(() => onGoogleMapsFailed(() => setFailed(true)), [])
-  const [vectorOff, setVectorOff] = useState(vectorFailed)
+  const [failures, setFailures] = useState(vectorFailures)
   const google = config?.maps?.google
   if (!config) return <MapShell />
   if (google && !failed) {
@@ -99,17 +99,21 @@ export function MapView(props: MapViewProps) {
       </Suspense>
     )
   }
-  const style = config.maps?.vectorStyle
-  if (style && !vectorOff) {
+  const styles = config.maps?.vectorStyles ?? (config.maps?.vectorStyle ? [config.maps.vectorStyle] : [])
+  const style = styles[failures]
+  if (style) {
     return (
       <Suspense fallback={<MapShell />}>
         <VectorMap
+          key={style}
           {...props}
           styleUrl={style}
+          olaKey={config.maps?.olaKey ?? undefined}
           traffic={config.maps?.traffic}
           onFail={() => {
-            vectorFailed = true
-            setVectorOff(true)
+            // Try the next style (e.g. Ola → MapTiler), then the simple map.
+            vectorFailures = failures + 1
+            setFailures(failures + 1)
           }}
         />
       </Suspense>

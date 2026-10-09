@@ -190,7 +190,7 @@ if (await yes('Add free map keys instead (MapTiler for maps & search, OpenRouteS
 }
 
 /* ---- Ola Maps (Indian building names) ------------------------------------------ */
-if (await yes('Add Ola Maps (best names for Indian buildings, societies and gates when you drop a pin)?')) {
+if (await yes('Add Ola Maps (Indian map style on the website, plus the best names for buildings, societies and gates)?')) {
   console.log('\n  maps.olakrutrim.com → Sign up → create a project/app → copy its API key.\n')
   const ola = (await ask('Ola Maps API key', env.get('OLA_MAPS_KEY'))).trim()
   if (ola) {
