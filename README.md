@@ -4,6 +4,21 @@ AI-matched carpooling for VIT students. A student with a car offers empty seats,
 
 The app is a full stack: a React web app, a Node.js API, a SQLite database and live updates over Server-Sent Events. When a driver publishes a ride on one phone, it appears straight away on every other student's phone. Requests, acceptances, chat and the driver's live GPS position also move between devices in real time.
 
+## Quick start (on your computer)
+
+1. Install **Node.js 22 LTS** from https://nodejs.org. Just click Next through the installer.
+2. Download this project: on GitHub, click **Code → Download ZIP**, then unzip it.
+3. Start it:
+   - **Windows:** double-click **`start.bat`**
+   - **Mac:** right-click **`start.command`** → Open
+   - **Linux:** run `./start.sh`
+4. Your browser opens **http://localhost:5173**. Click **Create Account** and enter your `@vit.edu.in` email.
+5. The 6-digit code appears in the **black terminal window**, because email sending isn't set up yet. Type it in and you're in.
+
+The first start installs everything (about a minute). After that it starts in seconds. Keep the terminal window open while you use the app.
+
+To test with two students on one computer, use a normal browser window for one and an **incognito/private** window for the other. Offer a ride in one, and it appears on the other's Home screen instantly.
+
 ---
 
 ## 1. Run it on your computer
