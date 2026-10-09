@@ -12,11 +12,33 @@ import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse
  * If Google fails (quota, bad key), the free services are used instead.
  */
 
+/**
+ * MapTiler key check. A wrong or restricted key makes MapTiler draw "API key required"
+ * on every tile, so the key is tested at startup and RideSync falls back to the
+ * free CARTO/OpenStreetMap map and search if it's rejected.
+ */
+let maptilerOk = true
+const maptiler = () => !!env.maptilerKey && maptilerOk
+
+export async function checkMapTiler(): Promise<'ok' | 'rejected' | 'unreachable' | 'none'> {
+  if (!env.maptilerKey) return 'none'
+  try {
+    const res = await fetch(`https://api.maptiler.com/maps/streets-v2/256/0/0/0.png?key=${encodeURIComponent(env.maptilerKey)}`, { signal: AbortSignal.timeout(6000) })
+    if (res.status === 401 || res.status === 403) {
+      maptilerOk = false
+      return 'rejected'
+    }
+    return res.ok ? 'ok' : 'unreachable'
+  } catch {
+    return 'unreachable'
+  }
+}
+
 export function mapsConfig() {
   const google = googleConfigured()
   return {
     google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
-    tiles: env.maptilerKey
+    tiles: maptiler()
       ? {
           url: `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}{r}.png?key=${env.maptilerKey}`,
           attribution: '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -25,7 +47,7 @@ export function mapsConfig() {
           url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
         },
-    search: google ? 'google' : env.maptilerKey ? 'maptiler' : 'openstreetmap',
+    search: google ? 'google' : maptiler() ? 'maptiler' : 'openstreetmap',
     routing: google ? 'google' : env.orsKey ? 'openrouteservice' : 'osrm',
   }
 }
@@ -72,13 +94,20 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
       console.error('[ridesync] Google place search failed, using OpenStreetMap', (e as Error).message)
     }
   }
-  try {
-    if (env.maptilerKey) {
+  if (maptiler()) {
+    try {
       const data = await getJson<{ features: MTFeature[] }>(
         `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${env.maptilerKey}&country=in&bbox=${BBOX}&proximity=${CAMPUS.lng},${CAMPUS.lat}&limit=6&language=en`,
       )
       places = data.features.map((f) => ({ id: `mt-${f.id}`, name: f.text, area: short(f.place_name, f.text), lat: f.center[1], lng: f.center[0], kind: 'custom' as const }))
-    } else {
+      cache.set(key, { at: Date.now(), places })
+      return places
+    } catch (e) {
+      console.error('[ridesync] MapTiler search failed, using OpenStreetMap', (e as Error).message)
+    }
+  }
+  try {
+    {
       const rows = await getJson<NomRow[]>(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&viewbox=${BBOX}&bounded=1&q=${encodeURIComponent(q)}`)
       places = rows.map((r) => {
         const name = r.name || r.display_name.split(',')[0]
@@ -110,7 +139,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ name: 
     }
   }
   try {
-    if (env.maptilerKey) {
+    if (maptiler()) {
       const data = await getJson<{ features: MTFeature[] }>(`https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${env.maptilerKey}&limit=1&language=en`)
       const f = data.features[0]
       return f ? { name: f.text, area: short(f.place_name, f.text) } : null

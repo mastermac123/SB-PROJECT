@@ -1,5 +1,6 @@
 import { createApp, env } from './app'
 import { verifyMail } from './mail'
+import { checkMapTiler } from './maps'
 import { razorpayConfigured } from './env'
 import { microsoftConfigured, anyMailConfigured } from './env'
 
@@ -11,6 +12,10 @@ app.listen(env.port, () => {
   if (!anyMailConfigured()) console.log(env.isProd ? '[ridesync] SMTP not set — email-code login disabled' : '[ridesync] SMTP not set — login codes are printed here (dev only)')
   if (anyMailConfigured()) void verifyMail()
   console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] Razorpay not set — riders pay by UPI to the driver or cash')
+  void checkMapTiler().then((r) => {
+    if (r === 'rejected') console.log('[ridesync] ⚠ MapTiler rejected the key in .env (MAPTILER_KEY) — using the free OpenStreetMap map instead. Copy the key again from cloud.maptiler.com → API keys and run setup.bat.')
+    if (r === 'ok') console.log('[ridesync] MapTiler key works ✓')
+  })
   const g = !!env.google.key
   console.log(
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,

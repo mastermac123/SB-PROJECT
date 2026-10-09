@@ -497,9 +497,11 @@ void showPaySheet(BuildContext context, BookingDetail d) {
     }
   }
 
-  Widget option(IconData icon, String title, String subtitle, VoidCallback onTap, {bool highlight = false}) => Padding(
+  Widget option(IconData icon, String title, String subtitle, VoidCallback? onTap, {bool highlight = false}) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: Panel(
+        child: Opacity(
+          opacity: onTap == null ? 0.55 : 1,
+          child: Panel(
           onTap: onTap,
           child: Row(children: [
             CircleAvatar(backgroundColor: highlight ? RS.primary : RS.primary50, child: Icon(icon, color: highlight ? Colors.white : RS.primary)),
@@ -510,8 +512,9 @@ void showPaySheet(BuildContext context, BookingDetail d) {
                 Text(subtitle, style: const TextStyle(color: RS.ink500, fontSize: 13)),
               ]),
             ),
-            const Icon(Icons.chevron_right),
+            if (onTap != null) const Icon(Icons.chevron_right),
           ]),
+        ),
         ),
       );
 
@@ -566,13 +569,14 @@ void showPaySheet(BuildContext context, BookingDetail d) {
               );
             }),
           ],
+          if (upi == null)
+            option(Icons.account_balance_wallet_outlined, 'Pay by UPI', '${d.driver.firstName} hasn’t added a UPI ID yet — message them to add it in Profile → Payment methods', null),
           option(Icons.payments_outlined, 'Cash at pickup', 'Hand the exact amount to the driver', () async {
             Navigator.pop(sheet);
             if (await attempt(context, () => api.pay(b.id, 'cash')) && context.mounted) {
               await showSuccess(context, 'Seat confirmed', subtitle: 'Pay ${money(b.fare)} in cash at pickup.');
             }
           }),
-          if (upi == null) const Notice('This driver hasn’t added a UPI ID yet, so UPI isn’t available.'),
           const SizedBox(height: 4),
           const Row(children: [
             Icon(Icons.shield_outlined, size: 16, color: RS.ink500),

@@ -8,6 +8,8 @@ import { googleMapsFailed, onGoogleMapsFailed } from './googleLoader'
 
 const GoogleMap = lazy(() => import('./GoogleMap'))
 
+const CARTO_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
+
 export type MapMarker = {
   id: string
   at: LatLng
@@ -143,14 +145,23 @@ function LeafletMap({
   }, [])
 
   // Tiles (provider comes from the server config: MapTiler when a key is set, else CARTO/OpenStreetMap)
-  const tileUrl = tiles?.url ?? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png'
+  const tileUrl = tiles?.url ?? CARTO_URL
   const tileAttribution =
     tiles?.attribution ?? '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
   useEffect(() => {
     const m = map.current
     if (!m) return
     tileLayer.current?.remove()
-    tileLayer.current = L.tileLayer(tileUrl, { attribution: tileAttribution, subdomains: 'abcd', maxZoom: 19 }).addTo(m)
+    const layer = L.tileLayer(tileUrl, { attribution: tileAttribution, subdomains: 'abcd', maxZoom: 19 }).addTo(m)
+    // If the keyed provider keeps failing (bad key, quota), switch to the free CARTO map.
+    let errors = 0
+    if (tileUrl !== CARTO_URL)
+      layer.on('tileerror', () => {
+        if (++errors !== 4) return
+        console.warn('[ridesync] map tiles failing — switching to the free OpenStreetMap map')
+        layer.setUrl(CARTO_URL)
+      })
+    tileLayer.current = layer
   }, [tileUrl, tileAttribution])
 
   // Routes

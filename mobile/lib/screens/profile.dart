@@ -8,9 +8,11 @@ import '../theme.dart';
 import '../util/format.dart';
 import '../util/validation.dart';
 import '../widgets/common.dart';
+import '../widgets/motion.dart';
 import '../widgets/photo_picker.dart';
 import '../widgets/vehicle_form.dart';
 import 'drive.dart';
+import 'trip.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -55,7 +57,7 @@ class ProfileTab extends StatelessWidget {
             _row(Icons.account_balance_wallet_outlined, 'Payment methods', u.upiId ?? 'Add your UPI ID to receive payments', () => open(const PaymentMethodsScreen())),
             _row(Icons.notifications_none_rounded, 'Notifications', 'Ride updates and messages', () => open(const NotificationSettingsScreen())),
             _row(Icons.shield_outlined, 'Safety', u.emergencyContacts.isEmpty ? 'Add emergency contacts' : '${u.emergencyContacts.length} emergency contact${u.emergencyContacts.length == 1 ? '' : 's'}', () => open(const SafetyScreen())),
-            _row(Icons.receipt_long_outlined, 'Payments', 'Rides you paid for and received', () => open(const PaymentsScreen())),
+            _row(Icons.account_balance_wallet_outlined, 'Wallet', 'Money paid, received and to collect', () => open(const PaymentsScreen())),
           ]),
           const SectionTitle('App'),
           _group([
@@ -281,40 +283,104 @@ class _SafetyScreenState extends State<SafetyScreen> {
 
 class PaymentsScreen extends StatelessWidget {
   const PaymentsScreen({super.key});
+
+  static const _status = {
+    'unpaid': ('Cash due', RS.warning, RS.warning50),
+    'marked_paid': ('Paid · unconfirmed', RS.primary, RS.primary50),
+    'received': ('Received', RS.success, RS.success50),
+    'paid_online': ('Paid online', RS.success, RS.success50),
+    'refunded': ('Refunded', RS.ink700, RS.sunken),
+  };
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Payments')),
-        body: LiveLoader<List<PaymentRecord>>(
-          load: (api) => api.payments(),
-          builder: (context, list, reload) {
-            if (list.isEmpty) return ListView(children: const [EmptyState(icon: Icons.receipt_long_outlined, title: 'No payments yet', body: 'Payments for rides you take or offer appear here.')]);
-            final paid = list.where((p) => p.direction == 'paid').fold<int>(0, (s, p) => s + p.amount);
-            final received = list.where((p) => p.direction == 'received').fold<int>(0, (s, p) => s + p.amount);
-            return ListView(padding: const EdgeInsets.all(16), children: [
-              Row(children: [
-                Expanded(child: Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('You paid', style: TextStyle(color: RS.ink500)), Text(money(paid), style: RS.heading(22))]))),
-                const SizedBox(width: 10),
-                Expanded(child: Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('You received', style: TextStyle(color: RS.ink500)), Text(money(received), style: RS.heading(22, color: RS.success))]))),
-              ]),
-              const SizedBox(height: 12),
-              Card(
-                child: Column(children: [
-                  for (var i = 0; i < list.length; i++) ...[
-                    if (i > 0) const Divider(indent: 16),
-                    ListTile(
-                      title: Text(list[i].route, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text('${list[i].direction == 'paid' ? 'To' : 'From'} ${list[i].counterparty} · ${dayOf(list[i].at)} · ${paymentLabel(list[i].method, list[i].status)}'),
-                      trailing: Text('${list[i].direction == 'paid' ? '−' : '+'}${money(list[i].amount)}', style: TextStyle(fontWeight: FontWeight.w700, color: list[i].direction == 'paid' ? RS.ink900 : RS.success)),
+  Widget build(BuildContext context) {
+    final u = context.watch<Session>().user!;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Wallet')),
+      body: LiveLoader<List<PaymentRecord>>(
+        load: (api) => api.payments(),
+        builder: (context, list, reload) {
+          final now = DateTime.now();
+          final month = list.where((p) => p.at.month == now.month && p.at.year == now.year);
+          final spent = month.where((p) => p.direction == 'paid' && p.status != 'unpaid' && p.status != 'refunded').fold<int>(0, (s, p) => s + p.amount);
+          final received = month.where((p) => p.direction == 'received' && (p.status == 'received' || p.status == 'paid_online')).fold<int>(0, (s, p) => s + p.amount);
+          final toCollect = list.where((p) => p.direction == 'received' && (p.status == 'unpaid' || p.status == 'marked_paid')).fold<int>(0, (s, p) => s + p.amount);
+          final driver = u.commute != 'rider';
+          return ListView(padding: const EdgeInsets.all(16), children: [
+            FadeSlideIn(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(RS.radiusXl),
+                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [RS.primary, RS.primary700]),
+                  boxShadow: const [BoxShadow(color: Color(0x445038E6), blurRadius: 18, offset: Offset(0, 8))],
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(driver ? 'Cost-share received this month' : 'Spent on rides this month', style: const TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 6),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: (driver ? received : spent).toDouble()),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOutCubic,
+                    builder: (_, v, _) => Text(money(v), style: RS.heading(34, color: Colors.white)),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    driver && toCollect > 0 ? '${money(toCollect)} still to confirm or collect' : (driver ? 'Paid directly to you by UPI or cash' : 'Paid directly to drivers by UPI, cash or online'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  if (driver) ...[
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54), minimumSize: const Size(0, 40)),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodsScreen())),
+                      icon: const Icon(Icons.alternate_email, size: 18),
+                      label: Text(u.upiId ?? 'Add UPI ID'),
                     ),
                   ],
                 ]),
               ),
-            ]);
-          },
-        ),
-      );
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Spent this month', style: TextStyle(color: RS.ink500)), Text(money(spent), style: RS.heading(20))]))),
+              const SizedBox(width: 10),
+              Expanded(child: Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('To collect', style: TextStyle(color: RS.ink500)), Text(money(toCollect), style: RS.heading(20))]))),
+            ]),
+            const SectionTitle('Activity'),
+            if (list.isEmpty)
+              const EmptyState(icon: Icons.receipt_long_outlined, title: 'No payments yet', body: 'Cost-share you pay or receive for rides appears here.')
+            else
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (final (i, p) in list.indexed) ...[
+                    if (i > 0) const Divider(indent: 72),
+                    ListTile(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: p.bookingId))),
+                      leading: CircleAvatar(
+                        backgroundColor: p.direction == 'received' ? RS.success50 : RS.primary50,
+                        child: Icon(p.direction == 'received' ? Icons.south_west_rounded : Icons.north_east_rounded, color: p.direction == 'received' ? RS.success : RS.primary, size: 20),
+                      ),
+                      title: Text(p.direction == 'received' ? 'From ${p.counterparty}' : 'To ${p.counterparty}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('${p.route} · ${switch (p.method) { 'upi' => 'UPI', 'online' => 'Online', _ => 'Cash' }} · ${ago(p.at)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text('${p.direction == 'received' ? '+' : '−'}${money(p.amount)}', style: TextStyle(fontWeight: FontWeight.w700, color: p.direction == 'received' ? RS.success : RS.ink900)),
+                        const SizedBox(height: 2),
+                        Pill(_status[p.status]?.$1 ?? p.status, color: _status[p.status]?.$2 ?? RS.ink700, background: _status[p.status]?.$3 ?? RS.sunken),
+                      ]),
+                    ),
+                  ],
+                ]),
+              ),
+            const SizedBox(height: 12),
+            const Text('Riders pay drivers directly by UPI or cash, or online when it’s turned on. Online payments for cancelled rides are refunded automatically.', style: TextStyle(color: RS.ink500, fontSize: 12.5)),
+          ]);
+        },
+      ),
+    );
+  }
 }
-
 
 class PreferencesScreen extends StatefulWidget {
   const PreferencesScreen({super.key});

@@ -1,88 +1,187 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../api/models.dart';
+import '../state/session.dart';
 import '../theme.dart';
 import '../util/format.dart';
 import '../widgets/common.dart';
-import '../widgets/ride_card.dart';
+import '../widgets/motion.dart';
 import 'drive.dart';
 import 'trip.dart';
 
-/// Rides I booked and rides I offered — upcoming and past.
-class RidesTab extends StatelessWidget {
+/// All my rides — booked and offered — in Upcoming / Active / Completed / Cancelled.
+class RidesTab extends StatefulWidget {
   const RidesTab({super.key});
+  @override
+  State<RidesTab> createState() => _RidesTabState();
+}
+
+enum _Tab { upcoming, active, completed, cancelled }
+
+class _Item {
+  _Item.booking(this.trip) : offer = null;
+  _Item.offer(this.offer) : trip = null;
+  final TripItem? trip;
+  final OfferedItem? offer;
+  Ride get ride => trip?.ride ?? offer!.ride;
+  DateTime get at => ride.departAt;
+
+  _Tab get tab {
+    if (trip != null) {
+      return switch (trip!.booking.status) {
+        'driver_arriving' || 'driver_arrived' || 'in_progress' => _Tab.active,
+        'completed' => _Tab.completed,
+        'cancelled' || 'rejected' => _Tab.cancelled,
+        _ => _Tab.upcoming,
+      };
+    }
+    return switch (offer!.ride.status) {
+      'in_progress' => _Tab.active,
+      'completed' => _Tab.completed,
+      'cancelled' => _Tab.cancelled,
+      _ => _Tab.upcoming,
+    };
+  }
+}
+
+class _RidesTabState extends State<RidesTab> {
+  _Tab? _picked;
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('My Rides'),
-            bottom: const TabBar(labelColor: RS.primary, indicatorColor: RS.primary, unselectedLabelColor: RS.ink500, tabs: [Tab(text: 'Booked'), Tab(text: 'Offered')]),
-          ),
-          body: LiveLoader<Trips>(
-            load: (api) => api.trips(),
-            builder: (context, trips, reload) => TabBarView(children: [_booked(context, trips.bookings), _offered(context, trips.rides)]),
-          ),
-        ),
-      );
-
-  Widget _booked(BuildContext context, List<TripItem> items) {
-    if (items.isEmpty) {
-      return ListView(children: const [EmptyState(icon: Icons.hail_rounded, title: 'No booked rides yet', body: 'Rides you request appear here, with live status from the driver.')]);
-    }
-    final upcoming = items.where((t) => t.booking.isActive).toList();
-    final past = items.where((t) => !t.booking.isActive).toList();
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
-      if (upcoming.isNotEmpty) const SectionTitle('Upcoming'),
-      for (final t in upcoming) _bookingTile(context, t),
-      if (past.isNotEmpty) const SectionTitle('Past'),
-      for (final t in past) _bookingTile(context, t),
-    ]);
+  Widget build(BuildContext context) {
+    final canDrive = context.watch<Session>().user!.commute != 'rider';
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Rides'),
+        actions: [
+          if (canDrive)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfferRideScreen())), icon: const Icon(Icons.add), label: const Text('Offer')),
+            ),
+        ],
+      ),
+      body: LiveLoader<Trips>(
+        load: (api) => api.trips(),
+        builder: (context, trips, reload) {
+          final all = [...trips.bookings.map(_Item.booking), ...trips.rides.map(_Item.offer)];
+          final counts = {for (final t in _Tab.values) t: all.where((i) => i.tab == t).length};
+          final tab = _picked ?? (counts[_Tab.active]! > 0 ? _Tab.active : _Tab.upcoming);
+          final list = all.where((i) => i.tab == tab).toList()
+            ..sort((a, b) => tab == _Tab.upcoming || tab == _Tab.active ? a.at.compareTo(b.at) : b.at.compareTo(a.at));
+          return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 32), children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (final t in _Tab.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text('${_label(t)}${counts[t]! > 0 && (t == _Tab.upcoming || t == _Tab.active) ? ' · ${counts[t]}' : ''}'),
+                      selected: tab == t,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() => _picked = t),
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            if (list.isEmpty)
+              _empty(context, tab, canDrive)
+            else
+              for (final (i, item) in list.indexed) FadeSlideIn(index: i, child: Padding(padding: const EdgeInsets.only(bottom: 10), child: _tile(context, item))),
+          ]);
+        },
+      ),
+    );
   }
 
-  Widget _bookingTile(BuildContext context, TripItem t) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Panel(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: t.booking.id))),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(when(t.ride.departAt), style: RS.heading(15))),
-              Pill.status(t.booking.status, bookingStatusLabel[t.booking.status] ?? t.booking.status),
+  String _label(_Tab t) => switch (t) { _Tab.upcoming => 'Upcoming', _Tab.active => 'Active', _Tab.completed => 'Completed', _Tab.cancelled => 'Cancelled' };
+
+  Widget _empty(BuildContext context, _Tab tab, bool canDrive) {
+    final (title, body) = switch (tab) {
+      _Tab.upcoming => ('No upcoming rides', 'Rides you book or offer will show up here.'),
+      _Tab.active => ('Nothing in progress', 'When a ride starts, you can track it from here.'),
+      _Tab.completed => ('No completed rides yet', 'Your ride history appears here after each trip.'),
+      _Tab.cancelled => ('No cancelled rides', 'Good news — nothing has been cancelled.'),
+    };
+    return EmptyState(icon: Icons.route_outlined, title: title, body: body);
+  }
+
+  Widget _dateCol(DateTime at) => SizedBox(
+        width: 44,
+        child: Column(children: [
+          Text('${at.day}', style: RS.heading(20)),
+          Text(const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][at.month - 1], style: const TextStyle(color: RS.ink500, fontSize: 12)),
+        ]),
+      );
+
+  Widget _tile(BuildContext context, _Item item) {
+    final ride = item.ride;
+    if (item.trip != null) {
+      final t = item.trip!;
+      final b = t.booking;
+      return Panel(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: b.id))),
+        child: Row(children: [
+          _dateCol(item.at),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${b.pickup.name} → ${b.drop.name}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+              Text('${timeOf(ride.departAt)} · with ${t.driver.name}', style: const TextStyle(color: RS.ink500, fontSize: 13), overflow: TextOverflow.ellipsis),
+              if (b.status == 'cancelled' && b.cancelReason != null)
+                Text('${b.cancelledBy == 'driver' ? 'Driver cancelled' : 'You cancelled'} · ${b.cancelReason}', style: const TextStyle(color: RS.danger, fontSize: 12.5), overflow: TextOverflow.ellipsis),
+              if (b.status == 'rejected') const Text('Driver couldn’t take this request', style: TextStyle(color: RS.danger, fontSize: 12.5)),
             ]),
-            const SizedBox(height: 10),
-            RouteLine(from: t.booking.pickup, to: t.booking.drop, dense: true),
-            const SizedBox(height: 8),
-            Text('${t.driver.name} · ${money(t.booking.fare)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
+          ),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(money(b.fare), style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Pill.status(b.status, _shortStatus(b.status)),
+          ]),
+        ]),
+      );
+    }
+    final o = item.offer!;
+    return Panel(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: ride.id))),
+      child: Row(children: [
+        _dateCol(item.at),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${ride.origin.name} → ${ride.destination.name}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+            Text('${timeOf(ride.departAt)} · You drove · ${ride.seatsBooked}/${ride.seatsTotal} seats', style: const TextStyle(color: RS.ink500, fontSize: 13), overflow: TextOverflow.ellipsis),
           ]),
         ),
-      );
-
-  Widget _offered(BuildContext context, List<OfferedItem> items) {
-    if (items.isEmpty) {
-      return ListView(children: const [EmptyState(icon: Icons.directions_car_outlined, title: 'No rides offered yet', body: 'Offer empty seats from the Home tab. Requests from students show up here.')]);
-    }
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 32), children: [
-      for (final r in items)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Panel(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: r.ride.id))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text(when(r.ride.departAt), style: RS.heading(15))),
-                if (r.pending > 0)
-                  Pill('${r.pending} request${r.pending == 1 ? '' : 's'}', color: RS.warning, background: RS.warning50)
-                else
-                  Pill.status(r.ride.status == 'scheduled' ? 'confirmed' : r.ride.status, switch (r.ride.status) { 'scheduled' => 'Scheduled', 'in_progress' => 'On the road', 'completed' => 'Completed', _ => 'Cancelled' }),
-              ]),
-              const SizedBox(height: 10),
-              RouteLine(from: r.ride.origin, to: r.ride.destination, dense: true),
-              const SizedBox(height: 8),
-              Text('${r.riders} rider${r.riders == 1 ? '' : 's'} · ${money(r.earned)} shared', style: const TextStyle(color: RS.ink500, fontSize: 13)),
-            ]),
-          ),
-        ),
-    ]);
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(ride.status == 'completed' ? '+${money(o.earned)}' : '${money(ride.farePerSeat)}/seat', style: TextStyle(fontWeight: FontWeight.w700, color: ride.status == 'completed' ? RS.success : RS.ink900)),
+          const SizedBox(height: 4),
+          if (o.pending > 0 && ride.status == 'scheduled')
+            Pill('${o.pending} new', color: RS.danger, background: RS.danger50)
+          else
+            Pill.status(
+              ride.status == 'scheduled' ? 'pending' : ride.status,
+              switch (ride.status) { 'scheduled' => 'Driving', 'in_progress' => 'Live', 'completed' => 'Completed', _ => 'Cancelled' },
+            ),
+        ]),
+      ]),
+    );
   }
+
+  String _shortStatus(String s) => switch (s) {
+        'pending' => 'Requested',
+        'accepted' => 'Accepted',
+        'confirmed' => 'Confirmed',
+        'driver_arriving' || 'driver_arrived' => 'Driver coming',
+        'in_progress' => 'On ride',
+        'completed' => 'Completed',
+        'rejected' => 'Declined',
+        'cancelled' => 'Cancelled',
+        _ => s,
+      };
 }

@@ -67,6 +67,7 @@ export async function sendLoginCode(email: string, code: string) {
         s.sentToday = 0
       }
       s.sentToday++
+      if (process.env.NODE_ENV !== 'test') console.log(`[ridesync] login code emailed to ${email} (from ${s.from}) — if it doesn't arrive, check Junk/Quarantine in Outlook`)
       return
     } catch (e) {
       lastError = e

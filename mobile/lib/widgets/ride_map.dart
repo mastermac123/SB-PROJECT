@@ -77,6 +77,8 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
   final Map<String, gm.BitmapDescriptor> _icons = {};
   // OpenStreetMap
   final _osm = fm.MapController();
+  int _tileErrors = 0;
+  bool _tilesFailed = false;
   bool _osmReady = false;
 
   MapPin? get _car => widget.pins.where((p) => p.kind == 'car').firstOrNull;
@@ -383,7 +385,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     // MapTiler when the server has a key; free CARTO/OpenStreetMap otherwise.
     final cfg = context.select<Session, (String?, String?)>((s) => (s.config?.tileUrl, s.config?.tileAttribution));
     const carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png';
-    final tileUrl = cfg.$1 ?? carto;
+    final tileUrl = _tilesFailed ? carto : (cfg.$1 ?? carto);
     final credit = (cfg.$2 ?? '© OpenStreetMap · CARTO').replaceAll(RegExp(r'<[^>]+>'), '');
     return fm.FlutterMap(
       mapController: _osm,
@@ -399,6 +401,10 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       children: [
         fm.TileLayer(
           urlTemplate: tileUrl,
+          // A rejected key or quota → switch to the free CARTO map instead of error tiles.
+          errorTileCallback: (_, _, _) {
+            if (tileUrl != carto && ++_tileErrors == 4 && mounted) setState(() => _tilesFailed = true);
+          },
           subdomains: const ['a', 'b', 'c', 'd'],
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
