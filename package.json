@@ -1,0 +1,34 @@
+{
+  "name": "ridesync-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "RideSync AI — AI-matched carpooling for the VIT community",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "framer-motion": "^14.0.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.53.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}

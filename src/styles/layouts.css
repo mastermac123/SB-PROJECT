@@ -1,0 +1,178 @@
+/* ==========================================================================
+   Layouts — app shell, map screens, pages, auth
+   Breakpoints: mobile < 768 ≤ tablet < 1024 ≤ desktop
+   ========================================================================== */
+
+.app {
+  min-height: 100dvh;
+  background: var(--bg-canvas);
+}
+.app__main {
+  position: relative;
+  min-height: 100dvh;
+}
+.app--with-nav .app__main { padding-bottom: calc(var(--nav-height) + var(--safe-bottom)); }
+
+@media (min-width: 1024px) {
+  .app--with-nav .app__main { padding-bottom: 0; margin-left: var(--sidebar-width); }
+  .app--with-sidebar .app__main { margin-left: var(--sidebar-width); }
+}
+
+/* ---- Page (non-map screens) --------------------------------------------- */
+.page {
+  min-height: 100dvh;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+.app--with-nav .page { min-height: calc(100dvh - var(--nav-height) - var(--safe-bottom)); }
+.page--canvas { background: var(--bg-canvas); }
+.page__content {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-2) var(--gutter) var(--space-10);
+  flex: 1;
+}
+.page__content--narrow { max-width: 480px; }
+.page__content--flush { padding-left: 0; padding-right: 0; }
+.page__header { padding: var(--space-4) 0 var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+.page__footer {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-3) var(--gutter) calc(var(--space-4) + var(--safe-bottom));
+  background: linear-gradient(to top, var(--surface) 75%, rgba(255, 255, 255, 0));
+}
+.app--with-nav .page__footer { bottom: calc(var(--nav-height) + var(--safe-bottom)); }
+.page__footer--narrow { max-width: 480px; }
+
+@media (min-width: 1024px) {
+  .app--with-nav .page { min-height: 100dvh; }
+  .app--with-nav .page__footer { bottom: 0; }
+  .page { background: var(--bg-canvas); }
+  .page__content { padding-top: var(--space-6); }
+  .page__sheet {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 0 0 1px var(--border);
+    padding: var(--space-6);
+  }
+  .page .topbar { background: transparent; backdrop-filter: none; max-width: calc(var(--content-max) + 32px); margin: 0 auto; width: 100%; padding-top: var(--space-4); height: auto; }
+  .page .topbar.is-scrolled { box-shadow: none; }
+}
+
+/* ---- Map screen --------------------------------------------------------- */
+.map-screen {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--surface);
+}
+.app--with-nav .map-screen { height: calc(100dvh - var(--nav-height) - var(--safe-bottom)); }
+.map-screen__map { position: absolute; inset: 0; }
+.map-screen__top {
+  position: absolute;
+  top: calc(var(--space-3) + var(--safe-top));
+  left: var(--space-3);
+  right: var(--space-3);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.map-screen__top > * { pointer-events: auto; }
+.map-screen__panel { display: none; }
+
+@media (min-width: 1024px) {
+  .map-screen,
+  .app--with-nav .map-screen {
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: var(--panel-width) 1fr;
+  }
+  .map-screen__map { position: relative; inset: auto; grid-column: 2; grid-row: 1; }
+  .map-screen__panel {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    z-index: 1;
+  }
+  .map-screen__panel-head { padding: var(--space-5) var(--space-5) 0; display: flex; align-items: center; gap: var(--space-2); }
+  .map-screen__panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-3) var(--space-5) var(--space-6); }
+  .map-screen__panel-footer { padding: var(--space-4) var(--space-5) var(--space-5); border-top: 1px solid var(--border); }
+  /* The panel carries navigation on desktop; map overlays would duplicate it. */
+  .map-screen__top { display: none; }
+}
+
+@media (min-width: 1440px) {
+  :root { --panel-width: 460px; }
+}
+
+/* ---- Auth layout -------------------------------------------------------- */
+.auth {
+  min-height: 100dvh;
+  display: flex;
+  background: var(--surface);
+}
+.auth__brand { display: none; }
+.auth__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.auth__inner {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--space-2) var(--gutter) var(--space-8);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.auth__title { padding: var(--space-4) 0 var(--space-6); display: flex; flex-direction: column; gap: var(--space-2); }
+.auth__footer { margin-top: auto; padding-top: var(--space-6); text-align: center; font: var(--text-body-sm); color: var(--ink-500); }
+.auth__divider { display: flex; align-items: center; gap: var(--space-3); color: var(--ink-400); font: var(--text-caption); }
+.auth__divider::before,
+.auth__divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+@media (min-width: 1024px) {
+  .auth__brand {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 46%;
+    max-width: 640px;
+    padding: var(--space-10);
+    background: var(--bg-canvas);
+    overflow: hidden;
+  }
+  .auth__main { justify-content: center; }
+  .auth__inner { flex: none; padding-top: var(--space-10); padding-bottom: var(--space-10); }
+}
+
+/* ---- Desktop content grids --------------------------------------------- */
+.split {
+  display: grid;
+  gap: var(--space-6);
+}
+@media (min-width: 1024px) {
+  .split--2 { grid-template-columns: 1fr 1fr; }
+  .split--aside { grid-template-columns: 1fr 320px; align-items: start; }
+}
+
+@media (max-width: 1023.98px) {
+  .only-desktop { display: none !important; }
+}
+@media (min-width: 1024px) {
+  .only-mobile { display: none !important; }
+}

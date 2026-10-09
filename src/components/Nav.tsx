@@ -1,0 +1,76 @@
+import { Bell, CarFront, House, MessageCircle, Route, Search, UserRound, Wallet } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { me, pendingRequestCount, unreadCount } from '@/services/api'
+import { useDB } from '@/services/db'
+import { Logo } from './Logo'
+import { Avatar, Button } from './ui'
+
+const ITEMS = [
+  { to: '/home', label: 'Home', icon: House },
+  { to: '/find', label: 'Find Ride', icon: Search },
+  { to: '/rides', label: 'My Rides', icon: Route },
+  { to: '/wallet', label: 'Wallet', icon: Wallet },
+  { to: '/profile', label: 'Profile', icon: UserRound },
+]
+
+export function BottomNav() {
+  const db = useDB()
+  const u = me(db)
+  const requests = u ? pendingRequestCount(u.id, db) : 0
+  return (
+    <nav className="bottom-nav only-mobile" aria-label="Primary">
+      {ITEMS.map(({ to, label, icon: Icon }) => (
+        <NavLink key={to} to={to} className="bottom-nav__item">
+          <Icon />
+          {label}
+          {to === '/rides' && requests > 0 && <span className="bottom-nav__pip" aria-label={`${requests} pending requests`} />}
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
+
+export function Sidebar() {
+  const db = useDB()
+  const nav = useNavigate()
+  const u = me(db)
+  if (!u) return null
+  const unread = unreadCount(u.id, db)
+  const requests = pendingRequestCount(u.id, db)
+  const canDrive = u.commute !== 'rider'
+  return (
+    <aside className="sidebar only-desktop" aria-label="Primary">
+      <Logo className="sidebar__logo" height={34} />
+      {ITEMS.slice(0, 4).map(({ to, label, icon: Icon }) => (
+        <NavLink key={to} to={to} className="sidebar__item">
+          <Icon />
+          {label}
+          {to === '/rides' && requests > 0 && <span className="sidebar__count">{requests}</span>}
+        </NavLink>
+      ))}
+      <NavLink to="/chat" className="sidebar__item">
+        <MessageCircle />
+        Messages
+      </NavLink>
+      <NavLink to="/notifications" className="sidebar__item">
+        <Bell />
+        Notifications
+        {unread > 0 && <span className="sidebar__count">{unread}</span>}
+      </NavLink>
+      {canDrive && (
+        <Button className="sidebar__cta" variant="tonal" block icon={<CarFront />} onClick={() => nav('/offer')}>
+          Offer a Ride
+        </Button>
+      )}
+      <NavLink to="/profile" className="sidebar__footer">
+        <Avatar name={u.name} src={u.photo} size="sm" verified={u.verified} />
+        <span className="stack grow" style={{ minWidth: 0 }}>
+          <span className="t-sm t-strong truncate">{u.name}</span>
+          <span className="t-caption t-muted truncate" style={{ fontWeight: 400 }}>
+            {u.studentId} · {u.campus === 'chennai' ? 'VIT Chennai' : 'VIT Vellore'}
+          </span>
+        </span>
+      </NavLink>
+    </aside>
+  )
+}
