@@ -248,11 +248,27 @@ export type AppConfig = {
   maps: { tiles: { url: string; attribution: string }; search: 'maptiler' | 'openstreetmap'; routing: 'openrouteservice' | 'osrm' }
 }
 
-export const useConfig = () => useQuery<AppConfig>('/config')
+export function useConfig() {
+  const q = useQuery<AppConfig>('/config')
+  const retryable = !!q.error && !q.data
+  useEffect(() => {
+    if (!retryable) return
+    const t = setTimeout(() => void q.reload(), 1500)
+    return () => clearTimeout(t)
+  }, [retryable, q.error]) // eslint-disable-line react-hooks/exhaustive-deps
+  return q
+}
 
 /** user: null = signed out, undefined = still loading. */
 export function useMe(): { user: User | null | undefined; error?: ApiError } {
   const q = useQuery<User>('/me')
+  // The server may still be starting (or briefly unreachable): keep retrying quietly.
+  const retryable = !!q.error && !q.data && (q.error.code === 'network' || q.error.code === 'server')
+  useEffect(() => {
+    if (!retryable) return
+    const t = setTimeout(() => void q.reload(), 1500)
+    return () => clearTimeout(t)
+  }, [retryable, q.error]) // eslint-disable-line react-hooks/exhaustive-deps
   if (q.error?.code === 'auth') return { user: null }
   if (q.error && !q.data) return { user: undefined, error: q.error }
   return { user: q.data }
