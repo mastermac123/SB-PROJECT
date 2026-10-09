@@ -9,6 +9,7 @@ import { StateView } from '@/components/States'
 import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
+import { TripTime } from '@/components/TripTime'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, VerifiedBadge } from '@/components/ui'
@@ -446,7 +447,13 @@ export function DriverRide() {
             {statusBadge}
             <span className="t-sm t-muted">{dayTime(ride.departAt)}</span>
           </div>
-          <Stops from={{ title: ride.origin.name, subtitle: ride.origin.area, time: time(ride.departAt) }} to={{ title: ride.destination.name, subtitle: ride.destination.area }} />
+          <Stops
+            from={{ title: ride.origin.name, subtitle: ride.origin.area, time: time(ride.departAt) }}
+            to={{ title: ride.destination.name, subtitle: ride.destination.area, time: time(new Date(new Date(ride.departAt).getTime() + ride.durationMin * 60_000)) }}
+          />
+          {(ride.status === 'scheduled' || live) && (
+            <TripTime from={pos ?? ride.origin} to={ride.destination} departAt={ride.departAt} plannedMin={ride.durationMin} distanceKm={ride.distanceKm} live={live} />
+          )}
           <div className="facts">
             <div className="fact">
               <span className="fact__label">Seats filled</span>

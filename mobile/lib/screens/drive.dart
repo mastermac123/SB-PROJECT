@@ -15,6 +15,7 @@ import '../widgets/ride_card.dart';
 import '../widgets/map_sheet.dart';
 import '../widgets/motion.dart';
 import '../widgets/ride_map.dart';
+import '../widgets/trip_time.dart';
 import 'chat.dart';
 import 'find.dart';
 import 'trip.dart';
@@ -289,7 +290,11 @@ class _DriveScreenState extends State<DriveScreen> {
             Pill.status(ride.status == 'scheduled' ? 'confirmed' : ride.status, switch (ride.status) { 'scheduled' => 'Scheduled', 'in_progress' => 'On the road', 'completed' => 'Completed', _ => 'Cancelled' }),
           ]),
           const SizedBox(height: 12),
-          Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt))),
+          Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))))),
+          if (ride.status == 'scheduled' || ride.status == 'in_progress') ...[
+            const SizedBox(height: 10),
+            TripTime(from: me ?? ride.origin.point, to: ride.destination.point, departAt: ride.departAt, plannedMin: ride.durationMin, distanceKm: ride.distanceKm, live: ride.status == 'in_progress'),
+          ],
           const SizedBox(height: 8),
           Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${money(ride.farePerSeat)} per seat', style: const TextStyle(color: RS.ink500)),
           if (ride.status == 'in_progress') ...[
