@@ -6,6 +6,12 @@ if not exist node_modules (
   echo Installing RideSync for the first time. This takes a minute...
   call npm install || (pause & exit /b 1)
 )
+rem Stop an older RideSync still running in another window, so the website and app
+rem don't keep talking to the old copy (old code, old settings).
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":8787 .*LISTENING" /C:":5173 .*LISTENING"') do (
+  echo   Stopping an older RideSync that was still running...
+  taskkill /F /PID %%p >nul 2>nul
+)
 echo.
 echo   RideSync is starting at http://localhost:5173
 echo   Login codes appear in THIS window until email is set up.

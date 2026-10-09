@@ -6,7 +6,7 @@ import { razorpayConfigured } from './env'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
 const app = createApp()
-app.listen(env.port, () => {
+const server = app.listen(env.port, () => {
   console.log(`[ridesync] API listening on http://localhost:${env.port}`)
   console.log(envFile.found ? `[ridesync] settings: ${envFile.path}` : `[ridesync] ⚠ No settings file (.env) in ${process.cwd()} — run setup.bat in THIS folder to set up email, payments and maps.`)
   if (envFile.error) console.log(`[ridesync] ⚠ .env has a formatting problem (${envFile.error}) — read it line by line instead. Run setup.bat again to rewrite it.`)
@@ -34,4 +34,21 @@ app.listen(env.port, () => {
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
   )
   if (env.devLogin) console.log('[ridesync] DEV_LOGIN enabled (local development only)')
+})
+
+// An older RideSync left running in another window keeps the port, and the website/app
+// would silently talk to that old copy (old code, old settings). Say so loudly.
+server.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code !== 'EADDRINUSE') throw e
+  console.log(`
+  ┌──────────────────────────────────────────────────────────────────
+  │ ⚠ RideSync is ALREADY RUNNING somewhere else (port ${env.port} is taken).
+  │   The website and app are talking to that OLD copy, not this one.
+  │
+  │   Fix: close this window, then in Command Prompt run
+  │        taskkill /F /IM node.exe
+  │   and double-click start.bat again.
+  └──────────────────────────────────────────────────────────────────
+`)
+  process.exit(1)
 })
