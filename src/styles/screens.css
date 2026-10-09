@@ -292,3 +292,9 @@ button.choice:active { transform: scale(0.99); }
 .upi-qr { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--border); }
 .upi-qr img { border-radius: 8px; }
 .upi-id { padding: 8px 8px 8px 14px; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+
+/* ---- Profile photo ------------------------------------------------------ */
+.photo-edit { position: relative; flex: none; border-radius: 50%; }
+.photo-edit:disabled { opacity: 0.7; }
+.photo-edit__badge { position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-600); color: #fff; box-shadow: 0 0 0 3px var(--surface); }
+.photo-edit__badge svg { width: 14px; height: 14px; }

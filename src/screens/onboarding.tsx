@@ -3,6 +3,7 @@ import { AtSign, Bell, CarFront, Check, Footprints, IdCard, MapPin, Phone, Repea
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
+import { PhotoPicker } from '@/components/PhotoPicker'
 import { Button, Field, Notice, Segmented, cx } from '@/components/ui'
 import { VehicleForm, type VehicleDraft } from '@/components/VehicleForm'
 import type { CommuteMode, Gender } from '@/lib/types'
@@ -170,6 +171,7 @@ function ProfileStep({ onNext }: { onNext: () => void }) {
         </p>
       </div>
       {errors.form && <Notice tone="error">{errors.form}</Notice>}
+      <PhotoPicker name={name} photo={user?.photo} />
       <Field label="Full name" autoComplete="name" leading={<UserRound />} value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
       <Field label="Mobile number" type="tel" inputMode="tel" autoComplete="tel-national" placeholder="98765 43210" leading={<Phone />} value={phone} onChange={(e) => setPhone(e.target.value)} error={errors.phone} />
       <Field label="Student ID / roll number" placeholder="As on your college ID card" leading={<IdCard />} value={studentId} onChange={(e) => setStudentId(e.target.value.toUpperCase())} error={errors.studentId} maxLength={15} />

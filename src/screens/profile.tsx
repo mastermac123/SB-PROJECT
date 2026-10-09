@@ -27,6 +27,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog, ModalSheet } from '@/components/Sheet'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
+import { PhotoPicker } from '@/components/PhotoPicker'
 import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, VerifiedBadge } from '@/components/ui'
 import { PREFERENCE_LABEL } from '@/lib/matching'
 import type { CommuteMode, Gender, RidePreference } from '@/lib/types'
@@ -45,7 +46,9 @@ export function Profile() {
     <Page title="Profile" back={false} actions={<button className="icon-btn" aria-label="Settings" onClick={() => nav('/settings')} style={{ marginRight: 4 }}><SettingsIcon /></button>}>
       <div className="stack gap-6">
         <div className="profile-head">
-          <Avatar name={u.name} src={u.photo} size="xl" verified />
+          <button type="button" onClick={() => nav('/profile/personal')} aria-label="Edit profile photo" style={{ borderRadius: '50%' }}>
+            <Avatar name={u.name} src={u.photo} size="xl" verified />
+          </button>
           <div className="stack gap-1" style={{ alignItems: 'center' }}>
             <h1 className="t-h2">{u.name}</h1>
             <span className="t-sm t-muted">
@@ -169,6 +172,7 @@ function Personal() {
   return (
     <Page title="Personal Information" backTo="/profile" narrow footer={<Button size="lg" block loading={saving} onClick={save}>Save changes</Button>}>
       <div className="stack gap-4">
+        <PhotoPicker name={u.name} photo={u.photo} />
         <Field label="Full name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} leading={<UserRound />} />
         <Field label="College email" value={u.email} disabled leading={<Mail />} hint="Verified at sign-in. This can’t be changed." />
         <Field label="Student ID / roll number" value={studentId} onChange={(e) => setStudentId(e.target.value.toUpperCase())} error={errors.studentId} />
