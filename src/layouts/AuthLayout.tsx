@@ -7,12 +7,14 @@ export function AuthLayout({ children, top }: { children: ReactNode; top?: React
   return (
     <div className="auth">
       <aside className="auth__brand" aria-hidden>
-        <Logo variant="compact" height={36} />
+        <div>
+          <Logo height={30} />
+        </div>
         <RouteArt />
         <div className="stack gap-2">
-          <p className="t-h2" style={{ maxWidth: 380 }}>Smart rides. Shared journeys.</p>
-          <p className="t-body t-muted" style={{ maxWidth: 380 }}>
-            Your campus carpool. Every driver and rider is a verified Vidyalankarite.
+          <p className="t-h1" style={{ maxWidth: 420 }}>Your campus. Your route. Your ride.</p>
+          <p className="t-body t-muted" style={{ maxWidth: 420 }}>
+            Carpooling only for Vidyalankar Institute of Technology students. Every driver and rider is verified with a college email.
           </p>
         </div>
       </aside>

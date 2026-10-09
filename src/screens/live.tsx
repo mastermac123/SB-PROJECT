@@ -10,7 +10,7 @@ import { useToast } from '@/components/Toast'
 import { Avatar, Button, Chip, IconButton, ListRow, Plate, Rating, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop, useNow } from '@/hooks'
 import { haversineKm, projectOnPolyline } from '@/lib/geo'
-import { firstName, money, relative, time } from '@/lib/format'
+import { firstName, km as fmtKm, money, relative, time } from '@/lib/format'
 import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
@@ -19,7 +19,7 @@ import { paymentLabel, SuccessMark } from './trip'
 
 // Configure per campus before launch; hidden when not set so we never show an unverified number.
 const CAMPUS_SECURITY = import.meta.env.VITE_CAMPUS_SECURITY_PHONE as string | undefined
-const RATING_TAGS = ['On time', 'Safe driving', 'Friendly', 'Clean car', 'Easy pickup', 'Good music']
+const RATING_TAGS = ['Safe driving', 'Friendly', 'On time', 'Clean vehicle', 'Smooth ride']
 
 const etaMin = (from: LatLng, to: LatLng) => Math.max(1, Math.round(((haversineKm(from, to) * 1.35) / 22) * 60))
 
@@ -275,10 +275,26 @@ function RateTrip({ detail }: { detail: BookingDetail }) {
         <div className="hero">
           <SuccessMark />
           <h1 className="t-h1">You’ve arrived</h1>
-          <p className="t-body t-muted">
-            {booking.drop.name} · {money(booking.fare)} · ~{(2.4 * booking.seats).toFixed(1)} kg CO₂ saved
-          </p>
+          <p className="t-body t-muted">{booking.drop.name}</p>
         </div>
+        <dl className="trip-summary">
+          <div>
+            <dt>Distance</dt>
+            <dd>{fmtKm(haversineKm(booking.pickup, booking.drop) * 1.3)}</dd>
+          </div>
+          <div>
+            <dt>Duration</dt>
+            <dd>{booking.pickedUpAt && booking.droppedAt ? `${Math.max(1, Math.round((+new Date(booking.droppedAt) - +new Date(booking.pickedUpAt)) / 60_000))} min` : '—'}</dd>
+          </div>
+          <div>
+            <dt>Fare</dt>
+            <dd>{money(booking.fare)}</dd>
+          </div>
+          <div>
+            <dt>CO₂ saved</dt>
+            <dd>~{(2.4 * booking.seats).toFixed(1)} kg</dd>
+          </div>
+        </dl>
         <div className="stack gap-5" style={{ alignItems: 'center', marginTop: 8 }}>
           <Avatar name={driver.name} src={driver.photo} size="xl" verified />
           <h2 className="t-h3">{rated ? `You rated ${firstName(driver.name)}` : `How was your ride with ${firstName(driver.name)}?`}</h2>

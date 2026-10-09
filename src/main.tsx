@@ -1,5 +1,4 @@
 import '@fontsource-variable/inter'
-import '@fontsource-variable/plus-jakarta-sans'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/components.css'

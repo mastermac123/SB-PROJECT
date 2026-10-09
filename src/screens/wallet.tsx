@@ -75,7 +75,7 @@ export function Wallet() {
         )}
         <AddMoney open={adding} testMode={!!w.data?.testMode} onClose={() => setAdding(false)} onDone={() => void w.reload()} />
         {user?.commute === 'rider' ? (
-          <div className="wallet-card">
+          <div className="wallet-card wallet-card--light">
             <span className="t-sm" style={{ opacity: 0.8 }}>
               Spent on rides this month
             </span>
@@ -85,7 +85,7 @@ export function Wallet() {
             </span>
           </div>
         ) : (
-          <div className="wallet-card">
+          <div className="wallet-card wallet-card--light">
             <span className="t-sm" style={{ opacity: 0.8 }}>
               Cost-share received this month
             </span>

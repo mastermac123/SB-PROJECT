@@ -3,13 +3,13 @@ import { RefreshCw, WifiOff } from 'lucide-react'
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
-import { BottomNav, Sidebar } from '@/components/Nav'
+import { BottomNav, TopNav } from '@/components/Nav'
 import { useToast } from '@/components/Toast'
 import { Button, cx } from '@/components/ui'
 import { useOnline } from '@/hooks'
 import { connectEvents, onNotification, revalidate, useMe } from '@/services/api'
 
-/** Authenticated shell: sidebar (desktop) / bottom nav (mobile), live updates, toasts. */
+/** Authenticated shell: top navigation (desktop) / bottom nav (mobile), live updates, toasts. */
 export function AppShell({ nav }: { nav: boolean }) {
   const { user, error } = useMe()
   const loc = useLocation()
@@ -45,8 +45,8 @@ export function AppShell({ nav }: { nav: boolean }) {
   if (user.onboarded && loc.pathname === '/onboarding') return <Navigate to="/home" replace />
 
   return (
-    <div className={cx('app', nav ? 'app--with-nav' : 'app--with-sidebar')}>
-      {user.onboarded && <Sidebar />}
+    <div className={cx('app', nav ? 'app--with-nav' : user.onboarded && 'app--with-topnav')}>
+      {user.onboarded && <TopNav />}
       <main className="app__main">
         <AnimatePresence>
           {!online && (

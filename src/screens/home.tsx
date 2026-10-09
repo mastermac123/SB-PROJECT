@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { MapView, type MapRoute } from '@/components/MapView'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
-import { Avatar, Badge, Button, Rating, Segmented, Skeleton } from '@/components/ui'
+import { Avatar, Badge, Button, Rating, Skeleton } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { dayTime, firstName, money, time } from '@/lib/format'
 import type { OfferedItem, SearchQuery, TripItem } from '@/lib/types'
@@ -24,7 +24,8 @@ export function Home() {
   const feed = useQuery<FeedItem[]>(Q.feed)
   const unread = useQuery<Badges>(Q.badges).data?.unread ?? 0
   const canDrive = u.commute !== 'rider'
-  const [mode, setMode] = useState<'find' | 'offer'>(u.commute === 'driver' ? 'offer' : 'find')
+  // Drivers-only start in "offer"; everyone else finds a ride, with "Offer a ride" one tap away.
+  const mode: 'find' | 'offer' = u.commute === 'driver' ? 'offer' : 'find'
   const base = search.query ?? defaultQuery(CAMPUS)
   const [draft, setDraft] = useState<TripDraft>({ pickup: base.pickup, drop: search.query ? base.drop : null, date: base.date, time: base.time, seats: base.seats })
   const [errors, setErrors] = useState<ReturnType<typeof validateTrip>>({})
@@ -39,11 +40,11 @@ export function Home() {
   const routes: MapRoute[] = soon.slice(0, 5).map((f) => ({ id: f.ride.id, coords: f.ride.route, kind: 'alt' }))
   const fit = [CAMPUS, ...soon.slice(0, 5).flatMap((f) => [f.ride.origin, f.ride.destination])]
 
-  function submit() {
+  function submit(as: 'find' | 'offer' = mode) {
     const errs = validateTrip(draft)
     setErrors(errs)
     if (Object.values(errs).some(Boolean)) return
-    if (mode === 'offer') {
+    if (as === 'offer') {
       nav('/offer', { state: { draft } })
       return
     }
@@ -73,28 +74,24 @@ export function Home() {
       header={
         <div className="stack gap-1 grow" style={{ paddingBottom: 8 }}>
           <span className="t-sm t-muted">
-            {greeting}, {firstName(u.name)}
+            {greeting}, {firstName(u.name)}.
           </span>
-          <h1 className="t-h2">{mode === 'offer' ? 'Where are you driving?' : 'Where are you going?'}</h1>
+          <h1 className="t-h2">{mode === 'offer' ? 'Where are you driving today?' : 'Where are you heading?'}</h1>
         </div>
       }
     >
       <div className="stack gap-4">
-        {canDrive && u.commute === 'both' && (
-          <Segmented
-            label="Ride mode"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'find', label: 'Find a ride' },
-              { value: 'offer', label: 'Offer a ride' },
-            ]}
-          />
-        )}
         <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? u.vehicle?.seats ?? 4 : 4} />
-        <Button size="lg" block onClick={submit} icon={mode === 'offer' ? <CarFront /> : <Search />}>
-          {mode === 'offer' ? 'Continue to Offer' : 'Find a Ride'}
-        </Button>
+        <div className="stack gap-2">
+          <Button size="lg" block onClick={() => submit()} icon={mode === 'offer' ? <CarFront /> : <Search />}>
+            {mode === 'offer' ? 'Offer a ride' : 'Find a ride'}
+          </Button>
+          {u.commute === 'both' && (
+            <Button size="lg" block variant="secondary" icon={<CarFront />} onClick={() => submit('offer')}>
+              Offer a ride instead
+            </Button>
+          )}
+        </div>
 
         {(booking || offered) && (
           <section className="stack gap-2" style={{ marginTop: 8 }}>

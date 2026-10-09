@@ -215,7 +215,7 @@ function MicrosoftButton({ from }: { from?: string }) {
         <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
         <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
       </svg>
-      {going ? 'Opening Microsoft…' : 'Sign in with Microsoft'}
+      {going ? 'Opening Microsoft…' : 'Continue with Microsoft (VIT Outlook)'}
     </a>
   )
 }
@@ -262,30 +262,43 @@ export function Login() {
   }
 
   const cfg = config.data
+  const sso = !!(cfg?.microsoftLogin || cfg?.googleClientId)
+  const switchMode = () => nav('/login', { replace: true, state: { mode: signup ? 'login' : 'signup', from } })
   return (
-    <AuthLayout top={<div className="auth__inner" style={{ flex: 'none', paddingBottom: 0, paddingTop: 8 }}>{step === 'code' ? <button className="icon-btn" aria-label="Back" onClick={() => setStep('email')}><ArrowRight style={{ transform: 'rotate(180deg)' }} /></button> : <BackButton to="/welcome" />}</div>}>
+    <AuthLayout
+      top={
+        <div className="auth__top">
+          {step === 'code' ? (
+            <button className="icon-btn" aria-label="Back" onClick={() => setStep('email')}>
+              <ArrowRight style={{ transform: 'rotate(180deg)' }} />
+            </button>
+          ) : (
+            <BackButton to="/welcome" />
+          )}
+          <Logo height={24} className="only-mobile" />
+          <span style={{ width: 40 }} className="only-mobile" />
+        </div>
+      }
+    >
       <AnimatePresence mode="wait">
         {step === 'email' ? (
-          <motion.div key="email" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.2 }}>
+          <motion.div key="email" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
             <div className="auth__title">
-              <h1 className="t-h1">{signup ? 'Create your account' : 'Welcome back'}</h1>
-              <p className="t-body t-muted">
-                Use your <strong style={{ color: 'var(--ink-900)' }}>@{domain}</strong> college account. RideSync is only for VIT students.
-              </p>
+              <span className="t-overline t-primary">{signup ? 'Join RideSync' : 'Welcome back'}</span>
+              <h1 className="t-h1">{signup ? 'Create your account' : 'Log in to RideSync'}</h1>
+              <p className="t-body t-muted">Your campus. Your route. Your ride.</p>
             </div>
             <div className="stack gap-4">
               {formError && <Notice tone="error">{formError}</Notice>}
-              {config.error && <Notice tone="error">Can’t reach the RideSync server. Check your connection and refresh.</Notice>}
-              {cfg?.microsoftLogin && <MicrosoftButton from={from} />}
-              {cfg?.googleClientId && <GoogleButton clientId={cfg.googleClientId} domain={domain} onSuccess={done} onError={setFormError} />}
-              {(cfg?.microsoftLogin || cfg?.googleClientId) && cfg.emailLogin && <div className="auth__divider">or get a code by email</div>}
+              {config.error && <Notice tone="error">Can’t reach RideSync right now. Check your connection and refresh.</Notice>}
               {cfg?.emailLogin && (
-                <form className="stack gap-4" onSubmit={sendCode} noValidate>
+                <form className="stack gap-3" onSubmit={sendCode} noValidate>
                   <Field
-                    label="College email"
+                    label="VIT email"
                     type="email"
                     inputMode="email"
                     autoComplete="email"
+                    autoFocus
                     placeholder={`firstname.lastname@${domain}`}
                     leading={<Mail />}
                     value={email}
@@ -295,22 +308,31 @@ export function Login() {
                     }}
                     error={error}
                   />
-                  <Button type="submit" size="lg" block variant={cfg.googleClientId || cfg.microsoftLogin ? 'secondary' : 'primary'} loading={loading} trailing={<ArrowRight />}>
-                    Email me a login code
+                  <Button type="submit" size="lg" block loading={loading} trailing={<ArrowRight />}>
+                    {signup ? 'Create account' : 'Continue'}
                   </Button>
+                  <p className="row row--top gap-2 t-caption t-muted" style={{ fontWeight: 400, margin: 0 }}>
+                    <ShieldCheck size={14} style={{ flex: 'none', marginTop: 1 }} />
+                    No password to remember. We email a 6-digit code to your @{domain} inbox each time you sign in.
+                  </p>
                 </form>
               )}
+              {sso && cfg?.emailLogin && <div className="auth__divider">or</div>}
+              {cfg?.microsoftLogin && <MicrosoftButton from={from} />}
+              {cfg?.googleClientId && <GoogleButton clientId={cfg.googleClientId} domain={domain} onSuccess={done} onError={setFormError} />}
               {cfg && !cfg.googleClientId && !cfg.microsoftLogin && !cfg.emailLogin && (
                 <Notice tone="warning" title="Sign-in isn’t set up yet">
-                  The server needs Microsoft sign-in or SMTP settings. See the README.
+                  The server needs Microsoft sign-in or email settings. See the README.
                 </Notice>
               )}
               {cfg?.devLogin && <DevLogin domain={domain} onDone={done} />}
             </div>
-            <div className="row row--top gap-2 t-caption t-muted" style={{ marginTop: 24, fontWeight: 400 }}>
-              <ShieldCheck size={14} style={{ flex: 'none', marginTop: 1 }} />
-              New here? Your account is created the first time you sign in. We only accept verified @{domain} addresses.
-            </div>
+            <p className="auth__switch">
+              {signup ? 'Already on RideSync?' : 'New to RideSync?'}{' '}
+              <button type="button" className="link-btn" onClick={switchMode}>
+                {signup ? 'Log in' : 'Create account'}
+              </button>
+            </p>
           </motion.div>
         ) : (
           <motion.div key="code" initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }} transition={{ duration: 0.2 }}>

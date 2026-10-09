@@ -190,10 +190,19 @@ export function MatchResults() {
         {loading ? (
           <motion.div key="loading" className="stack gap-3" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
             <div className="analysing">
-              <div className="progress progress--indeterminate">
-                <div className="progress__bar" />
-              </div>
-              <span className="t-sm t-muted">Comparing routes, timing and pickup distance…</span>
+              <svg className="analysing__art" viewBox="0 0 220 40" aria-hidden>
+                <path id="an-route" d="M 10 30 C 60 30 70 10 110 12 S 170 28 210 10" fill="none" stroke="var(--border-strong)" strokeWidth="3" strokeLinecap="round" strokeDasharray="2 6" />
+                {[10, 110, 210].map((x, i) => (
+                  <circle key={x} cx={x} cy={[30, 12, 10][i]} r="4" fill="var(--surface)" stroke="var(--primary-600)" strokeWidth="2.5">
+                    <animate attributeName="r" values="3.5;5;3.5" dur="1.4s" begin={`${i * 0.25}s`} repeatCount="indefinite" />
+                  </circle>
+                ))}
+                <circle r="4" fill="var(--primary-600)">
+                  <animateMotion dur="1.8s" repeatCount="indefinite" path="M 10 30 C 60 30 70 10 110 12 S 170 28 210 10" />
+                </circle>
+              </svg>
+              <span className="t-body t-strong">Finding rides that fit your route…</span>
+              <span className="t-sm t-muted">Comparing route overlap, departure time and pickup distance.</span>
             </div>
             <RideCardSkeleton />
             <RideCardSkeleton />
@@ -212,11 +221,11 @@ export function MatchResults() {
             {ridesThatWindow === 0 ? (
               <StateView
                 icon={<CarFront />}
-                title="No rides offered yet"
+                title="No rides match your route yet"
                 body={`No one from the VIT community has offered a ride around ${desiredTime(q).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} ${dayLabel(desiredTime(q)).toLowerCase()}. This list updates live — new rides appear here the moment they’re posted.`}
                 actions={
                   <Button block variant="secondary" onClick={() => nav('/find')}>
-                    Change time or route
+                    Adjust search
                   </Button>
                 }
               />
@@ -224,8 +233,8 @@ export function MatchResults() {
               <StateView
                 icon={<SearchX />}
                 tone="neutral"
-                title="No matching rides"
-                body={`${plural(ridesThatWindow, 'ride is', 'rides are')} offered around this time, but none pass close enough to your pickup or have ${q.seats > 1 ? `${q.seats} free seats` : 'a free seat'}.`}
+                title="No rides match your route yet"
+                body={`${plural(ridesThatWindow, 'ride is', 'rides are')} offered around this time, but none pass close enough to your pickup or have ${q.seats > 1 ? `${q.seats} free seats` : 'a free seat'}. Try adjusting your time or pickup area.`}
                 actions={
                   <>
                     <Button block onClick={() => nav('/find')}>

@@ -710,52 +710,62 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
   box-shadow: 0 0 0 2px var(--surface);
 }
 
-/* ---- Sidebar (desktop) --------------------------------------------------- */
-.sidebar {
+/* ---- Top navigation (desktop) -------------------------------------------- */
+.topnav {
   position: fixed;
   top: 0;
-  bottom: 0;
   left: 0;
+  right: 0;
   z-index: var(--z-nav);
-  width: var(--sidebar-width);
+  height: var(--topnav-height);
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-5) var(--space-3);
+  align-items: center;
+  gap: var(--space-6);
+  padding: 0 var(--space-6);
   background: var(--surface);
-  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
-.sidebar__logo { height: 34px; width: auto; margin: 2px var(--space-3) var(--space-6); align-self: flex-start; }
-.sidebar__item {
+.topnav__logo { display: flex; align-items: center; text-decoration: none !important; flex: none; }
+.topnav__links { display: flex; align-items: stretch; gap: var(--space-1); height: 100%; }
+.topnav__link {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  height: 44px;
+  gap: 8px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
   font: 500 0.9375rem/1 var(--font-body);
-  color: var(--ink-700);
+  color: var(--ink-500);
   text-decoration: none !important;
-  transition: background-color var(--dur-fast), color var(--dur-fast);
+  transition: color var(--dur-fast);
 }
-.sidebar__item svg { width: 20px; height: 20px; }
-.sidebar__item:hover { background: var(--surface-hover); color: var(--ink-900); }
-.sidebar__item.active { background: var(--primary-50); color: var(--primary-700); font-weight: 600; }
-.sidebar__count {
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+.topnav__link:hover { color: var(--ink-900); }
+.topnav__link.active { color: var(--ink-900); font-weight: 600; }
+.topnav__link.active::after {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--primary-600);
+}
+.topnav__count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: var(--radius-full);
   background: var(--error-500);
   color: #fff;
-  font: 600 0.6875rem/20px var(--font-body);
+  font: 600 0.6875rem/18px var(--font-body);
   text-align: center;
 }
-.sidebar__cta { margin: var(--space-4) 0 var(--space-2); }
-.sidebar__footer { margin-top: auto; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); text-decoration: none !important; color: var(--ink-900); }
-.sidebar__footer:hover { background: var(--surface-hover); }
+.topnav__right { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+.topnav__icon { position: relative; }
+.topnav__icon .dot-badge { top: 8px; left: auto; right: 8px; }
+.topnav__me { display: flex; align-items: center; gap: var(--space-2); margin-left: var(--space-2); padding: 4px; border-radius: var(--radius-full); text-decoration: none !important; }
+.topnav__me:hover { background: var(--surface-hover); }
+.topnav__me.active { box-shadow: 0 0 0 2px var(--primary-200); }
 
 /* ---- Bottom sheet -------------------------------------------------------- */
 .sheet {
@@ -1021,6 +1031,8 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
 .vmap-controls button:hover { background: var(--surface-sunken); }
 .vmap-controls button.is-on { color: var(--primary-600); background: var(--primary-50); }
 .vmap-controls svg { width: 18px; height: 18px; }
+/* Phones pinch to zoom; keep only 3D and show-route there. */
+@media (max-width: 1023.98px) { .vmap-controls button[aria-label^='Zoom'] { display: none; } }
 .vmap-legend {
   position: absolute;
   left: 12px;

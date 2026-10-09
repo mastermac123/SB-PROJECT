@@ -6,8 +6,8 @@ import { Avatar, Button } from './ui'
 
 const ITEMS = [
   { to: '/home', label: 'Home', icon: House },
-  { to: '/find', label: 'Find Ride', icon: Search },
-  { to: '/rides', label: 'My Rides', icon: Route },
+  { to: '/find', label: 'Find a ride', icon: Search },
+  { to: '/rides', label: 'My rides', icon: Route },
   { to: '/wallet', label: 'Wallet', icon: Wallet },
   { to: '/profile', label: 'Profile', icon: UserRound },
 ]
@@ -27,7 +27,8 @@ export function BottomNav() {
   )
 }
 
-export function Sidebar() {
+/** Desktop navigation: a quiet bar so the map gets the whole width below it. */
+export function TopNav() {
   const nav = useNavigate()
   const { user: u } = useMe()
   const badges = useQuery<Badges>(Q.badges).data
@@ -36,38 +37,35 @@ export function Sidebar() {
   const requests = badges?.requests ?? 0
   const canDrive = u.commute !== 'rider'
   return (
-    <aside className="sidebar only-desktop" aria-label="Primary">
-      <Logo className="sidebar__logo" height={34} />
-      {ITEMS.slice(0, 4).map(({ to, label, icon: Icon }) => (
-        <NavLink key={to} to={to} className="sidebar__item">
-          <Icon />
-          {label}
-          {to === '/rides' && requests > 0 && <span className="sidebar__count">{requests}</span>}
+    <header className="topnav only-desktop">
+      <NavLink to="/home" className="topnav__logo" aria-label="RideSync home">
+        <Logo height={28} />
+      </NavLink>
+      <nav className="topnav__links" aria-label="Primary">
+        {ITEMS.slice(0, 4).map(({ to, label }) => (
+          <NavLink key={to} to={to} className="topnav__link">
+            {label}
+            {to === '/rides' && requests > 0 && <span className="topnav__count" aria-label={`${requests} pending requests`}>{requests}</span>}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="topnav__right">
+        {canDrive && (
+          <Button size="sm" variant="tonal" icon={<CarFront />} onClick={() => nav('/offer')}>
+            Offer a ride
+          </Button>
+        )}
+        <NavLink to="/chat" className="icon-btn topnav__icon" aria-label="Messages">
+          <MessageCircle />
         </NavLink>
-      ))}
-      <NavLink to="/chat" className="sidebar__item">
-        <MessageCircle />
-        Messages
-      </NavLink>
-      <NavLink to="/notifications" className="sidebar__item">
-        <Bell />
-        Notifications
-        {unread > 0 && <span className="sidebar__count">{unread}</span>}
-      </NavLink>
-      {canDrive && (
-        <Button className="sidebar__cta" variant="tonal" block icon={<CarFront />} onClick={() => nav('/offer')}>
-          Offer a Ride
-        </Button>
-      )}
-      <NavLink to="/profile" className="sidebar__footer">
-        <Avatar name={u.name} src={u.photo} size="sm" verified />
-        <span className="stack grow" style={{ minWidth: 0 }}>
-          <span className="t-sm t-strong truncate">{u.name}</span>
-          <span className="t-caption t-muted truncate" style={{ fontWeight: 400 }}>
-            {u.studentId} · {u.email.split('@')[1]}
-          </span>
-        </span>
-      </NavLink>
-    </aside>
+        <NavLink to="/notifications" className="icon-btn topnav__icon" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
+          <Bell />
+          {unread > 0 && <span className="dot-badge" />}
+        </NavLink>
+        <NavLink to="/profile" className="topnav__me" aria-label="Your profile">
+          <Avatar name={u.name} src={u.photo} size="sm" verified />
+        </NavLink>
+      </div>
+    </header>
   )
 }

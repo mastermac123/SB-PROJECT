@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CreditCard, Copy, ExternalLink, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
+import { Banknote, CreditCard, Copy, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -186,8 +186,8 @@ export function Payment() {
                 selected={method === 'online'}
                 onSelect={() => setMethod('online')}
                 logo={<CreditCard />}
-                title="Pay online"
-                subtitle="UPI, cards, netbanking · secured by Razorpay · auto-refund if cancelled"
+                title="Card, UPI or netbanking"
+                subtitle="Secured by Razorpay · refunded automatically if cancelled"
               />
             )}
             {rzpKey?.startsWith('rzp_test_') && (method === 'online' || (method === 'wallet' && shortfall > 0)) && (
@@ -201,7 +201,7 @@ export function Payment() {
               onSelect={() => setMethod('upi')}
               logo={<Smartphone />}
               title="UPI to driver"
-              subtitle={d.driverUpiId ? `Google Pay, PhonePe, Paytm or any UPI app · to ${d.driverUpiId}` : `${name} hasn’t added a UPI ID yet`}
+              subtitle={d.driverUpiId ? `Google Pay · PhonePe · Paytm · any UPI app` : `${name} hasn’t added a UPI ID yet`}
             />
             <AnimatePresence initial={false}>
               {method === 'upi' && link && (
@@ -213,11 +213,23 @@ export function Payment() {
                         <span className="t-sm t-muted t-center">Scan with any UPI app on your phone</span>
                       </div>
                     ) : (
-                      <a className="btn btn--dark btn--lg btn--block" href={link} onClick={() => setOpened(true)}>
-                        <span className="btn__label">
-                          <ExternalLink /> Pay {money(booking.fare)} in UPI app
-                        </span>
-                      </a>
+                      <div className="stack gap-2">
+                        <span className="t-caption t-muted">Pay {money(booking.fare)} with</span>
+                        {/* Each app's own UPI link, with the amount and driver filled in. */}
+                        <div className="upi-apps">
+                          {[
+                            { name: 'Google Pay', scheme: 'tez://upi/pay', color: '#1a73e8', initial: 'G' },
+                            { name: 'PhonePe', scheme: 'phonepe://pay', color: '#5f259f', initial: 'P' },
+                            { name: 'Paytm', scheme: 'paytmmp://pay', color: '#00baf2', initial: 'P' },
+                            { name: 'Other UPI app', scheme: 'upi://pay', color: 'var(--ink-700)', initial: '…' },
+                          ].map((a) => (
+                            <a key={a.name} className="upi-app" href={`${a.scheme}?${link.split('?')[1]}`} onClick={() => setOpened(true)}>
+                              <span className="upi-app__logo" style={{ background: a.color }}>{a.initial}</span>
+                              {a.name}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     )}
                     <div className="row gap-2 upi-id">
                       <span className="t-sm grow truncate">

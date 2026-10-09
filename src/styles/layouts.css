@@ -14,8 +14,8 @@
 .app--with-nav .app__main { padding-bottom: calc(var(--nav-height) + var(--safe-bottom)); }
 
 @media (min-width: 1024px) {
-  .app--with-nav .app__main { padding-bottom: 0; margin-left: var(--sidebar-width); }
-  .app--with-sidebar .app__main { margin-left: var(--sidebar-width); }
+  .app--with-nav .app__main,
+  .app--with-topnav .app__main { padding-bottom: 0; padding-top: var(--topnav-height); }
 }
 
 /* ---- Page (non-map screens) --------------------------------------------- */
@@ -50,7 +50,8 @@
 .page__footer--narrow { max-width: 480px; }
 
 @media (min-width: 1024px) {
-  .app--with-nav .page { min-height: 100dvh; }
+  .app--with-nav .page,
+  .app--with-topnav .page { min-height: calc(100dvh - var(--topnav-height)); }
   .app--with-nav .page__footer { bottom: 0; }
   .page { background: var(--bg-canvas); }
   .page__content { padding-top: var(--space-6); }
@@ -88,21 +89,23 @@
 .map-screen__panel { display: none; }
 
 @media (min-width: 1024px) {
+  /* Desktop: the map is the main surface; information lives in a panel on the right. */
   .map-screen,
   .app--with-nav .map-screen {
-    height: 100dvh;
+    height: calc(100dvh - var(--topnav-height));
     display: grid;
-    grid-template-columns: var(--panel-width) 1fr;
+    grid-template-columns: 1fr var(--panel-width);
   }
-  .map-screen__map { position: relative; inset: auto; grid-column: 2; grid-row: 1; }
+  .app:not(.app--with-nav):not(.app--with-topnav) .map-screen { height: 100dvh; }
+  .map-screen__map { position: relative; inset: auto; grid-column: 1; grid-row: 1; }
   .map-screen__panel {
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     background: var(--surface);
-    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
     z-index: 1;
   }
   .map-screen__panel-head { padding: var(--space-5) var(--space-5) 0; display: flex; align-items: center; gap: var(--space-2); }
@@ -140,6 +143,11 @@
 }
 .auth__title { padding: var(--space-4) 0 var(--space-6); display: flex; flex-direction: column; gap: var(--space-2); }
 .auth__footer { margin-top: auto; padding-top: var(--space-6); text-align: center; font: var(--text-body-sm); color: var(--ink-500); }
+.auth__top { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 420px; margin: 0 auto; padding: calc(var(--space-2) + var(--safe-top)) var(--gutter) 0; }
+.auth__switch { margin: var(--space-8) 0 0; text-align: center; font: var(--text-body-sm); color: var(--ink-500); }
+.link-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--primary-600); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.link-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); border-radius: 4px; }
 .auth__divider { display: flex; align-items: center; gap: var(--space-3); color: var(--ink-400); font: var(--text-caption); }
 .auth__divider::before,
 .auth__divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
