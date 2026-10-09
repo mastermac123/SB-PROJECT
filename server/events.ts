@@ -27,4 +27,4 @@ export const broadcastSync = () => emit(streams.keys(), { type: 'sync' })
 
 setInterval(() => {
   for (const set of streams.values()) for (const res of set) res.write(': ping\n\n')
-}, 25_000).unref()
+}, 10_000).unref()

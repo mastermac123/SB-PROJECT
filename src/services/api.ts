@@ -152,9 +152,18 @@ let source: EventSource | null = null
 let syncTimer: number | undefined
 let connected = false
 
+let pollTimer: number | undefined
+const onVisible = () => {
+  if (document.visibilityState === 'visible') revalidate()
+}
+
 export function connectEvents() {
   if (source) return
   source = new EventSource('/api/events', { withCredentials: true })
+  // Safety net: if a proxy delays live updates, open screens still refresh every 15 s
+  // and as soon as the tab comes back into view.
+  pollTimer = window.setInterval(() => document.visibilityState === 'visible' && revalidate(), 15_000)
+  document.addEventListener('visibilitychange', onVisible)
   source.onopen = () => {
     connected = true
     connListeners.forEach((l) => l())
@@ -195,6 +204,8 @@ export function onSync(fn: () => void) {
 export function disconnectEvents() {
   source?.close()
   source = null
+  window.clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisible)
   connected = false
   connListeners.forEach((l) => l())
 }

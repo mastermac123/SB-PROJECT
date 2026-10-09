@@ -202,12 +202,19 @@ api.patch(
       const err = validatePhone(p.phone)
       if (err) throw new HttpError(400, err, 'phone')
       p.phone = p.phone.replace(/\D/g, '').slice(-10)
+      const taken = one(`SELECT id FROM users WHERE phone = ? AND id != ? AND deleted = 0`, p.phone, meId(req))
+      if (taken) throw new HttpError(409, 'This mobile number is already linked to another account.', 'phone')
     }
     if (p.studentId !== undefined) {
       const err = validateStudentId(p.studentId)
       if (err) throw new HttpError(400, err, 'studentId')
       p.studentId = p.studentId.trim().toUpperCase()
-      const clash = one(`SELECT id FROM users WHERE student_id = ? AND id != ? AND deleted = 0`, p.studentId, meId(req))
+      // Compare ignoring "/", "-" and spaces so "VU1F/2122-001" and "VU1F2122001" count as the same ID.
+      const clash = one(
+        `SELECT id FROM users WHERE REPLACE(REPLACE(REPLACE(UPPER(student_id), '/', ''), '-', ''), ' ', '') = ? AND id != ? AND deleted = 0`,
+        p.studentId.replace(/[/\-\s]/g, ''),
+        meId(req),
+      )
       if (clash) throw new HttpError(409, 'This student ID is already linked to another account.', 'studentId')
     }
     for (const c of p.emergencyContacts ?? []) {
@@ -302,7 +309,8 @@ api.delete(
 
 api.get('/events', requireUser, (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
-  res.write(': connected\n\n')
+  // 2 KB of padding makes proxies and tunnels (e.g. Cloudflare) start streaming straight away instead of buffering.
+  res.write(`: connected${' '.repeat(2048)}\n\n`)
   const remove = addStream(meId(req), res)
   req.on('close', remove)
 })

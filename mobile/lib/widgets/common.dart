@@ -255,17 +255,21 @@ class LiveLoader<T> extends StatefulWidget {
   State<LiveLoader<T>> createState() => _LiveLoaderState<T>();
 }
 
-class _LiveLoaderState<T> extends State<LiveLoader<T>> {
+class _LiveLoaderState<T> extends State<LiveLoader<T>> with WidgetsBindingObserver {
   T? _data;
   Object? _error;
   bool _loading = true;
   StreamSubscription<void>? _sub;
   Timer? _debounce;
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
     _reload();
+    WidgetsBinding.instance.addObserver(this);
+    // Safety net: if the live connection is delayed (e.g. through a tunnel), refresh every 15 s.
+    _poll = Timer.periodic(const Duration(seconds: 15), (_) => _reload(quiet: true));
     _sub = context.read<Session>().events?.onSync.listen((_) {
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 250), () => _reload(quiet: true));
@@ -282,10 +286,18 @@ class _LiveLoaderState<T> extends State<LiveLoader<T>> {
     }
   }
 
+  /// Refresh as soon as the app comes back to the foreground.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _reload(quiet: true);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     _debounce?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 
