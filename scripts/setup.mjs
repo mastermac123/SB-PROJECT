@@ -69,6 +69,34 @@ if (await yes('Set up email so login codes arrive in students’ inboxes?')) {
   }
 }
 
+/* ---- Backup email sender --------------------------------------------------- */
+if (env.get('SMTP_HOST') && (await yes('Add a BACKUP email account (used automatically when the main one hits its daily limit)?'))) {
+  console.log('\n  Recommended: a free Brevo account (300 emails/day) — brevo.com → SMTP & API → SMTP keys.\n   1) Brevo\n   2) Another Gmail\n   3) Other SMTP\n')
+  const c = await ask('Choose 1, 2 or 3', '1')
+  const host = c === '1' ? 'smtp-relay.brevo.com' : c === '2' ? 'smtp.gmail.com' : await ask('SMTP host', env.get('SMTP2_HOST'))
+  const port = await ask('SMTP port', env.get('SMTP2_PORT') || '587')
+  const user = await ask(c === '1' ? 'Brevo SMTP login (looks like 1234ab@smtp-brevo.com)' : 'Email address / username', env.get('SMTP2_USER'))
+  const pass = (await ask('Password / SMTP key / App Password')).replace(c === '2' ? /\s+/g : /^\s+|\s+$/g, '') || env.get('SMTP2_PASS') || ''
+  const from = await ask('Send emails from (an address you verified with this service)', c === '2' ? user : (env.get('MAIL_FROM') || '').replace(/^.*<|>$/g, ''))
+  env.set('SMTP2_HOST', host)
+  env.set('SMTP2_PORT', port)
+  env.set('SMTP2_USER', user)
+  env.set('SMTP2_PASS', pass)
+  env.set('MAIL2_FROM', `RideSync <${from}>`)
+  save()
+  const to = await ask('Send a test email from the backup to (your @vit.edu.in address)')
+  if (to) {
+    process.stdout.write('  Sending… ')
+    try {
+      const t = nodemailer.createTransport({ host, port: Number(port), secure: Number(port) === 465, auth: { user, pass } })
+      await t.sendMail({ from: env.get('MAIL2_FROM'), to, subject: '654321 is your RideSync test code (backup sender)', text: 'If you can read this, the RideSync backup sender works.' })
+      console.log('sent! Check the inbox (and Junk).\n')
+    } catch (e) {
+      console.log(`failed: ${e?.message || e}\n`)
+    }
+  }
+}
+
 /* ---- Razorpay --------------------------------------------------------------- */
 if (await yes('Set up Razorpay online payments?')) {
   console.log('\n  razorpay.com → sign up → Dashboard (Test mode) → Account & Settings → API Keys → Generate Test Key.\n')

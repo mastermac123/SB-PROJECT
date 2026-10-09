@@ -40,7 +40,7 @@ import {
 import { getRoute } from './routing'
 import { mapsConfig, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart } from './microsoft'
-import { microsoftConfigured, razorpayConfigured, smtpConfigured } from './env'
+import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
 import { createOrder, refundPayment, verifyPaymentSignature, verifyWebhookSignature } from './razorpay'
 
 export const api = Router()
@@ -89,7 +89,7 @@ const QueryZ = z.object({
 /* ---- Config & auth -------------------------------------------------------- */
 
 api.get('/config', (_req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !smtpConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig() })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig() })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.

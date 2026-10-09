@@ -70,6 +70,23 @@ MAIL_FROM="RideSync <your.address@gmail.com>"
 
 Brevo, Resend, Zoho and Amazon SES work the same way and scale better. Codes expire after 10 minutes, are single-use, and are rate-limited. Send yourself a test code first: Microsoft 365 can put mail from new senders in **Junk**. If it does, mark it "Not junk"; Brevo usually delivers more reliably than Gmail.
 
+### Sending codes to thousands of students
+
+Each student gets their own code, sent from your RideSync email account. Students stay logged in for **90 days** (`SESSION_DAYS`), so after launch a college of ~5,000 needs only about 50–60 codes a day.
+
+Launch week is the busy time. Plan for it like this:
+
+| Setup | Codes per day | Cost |
+|---|---|---|
+| Gmail only | ~500 | free |
+| Gmail + Brevo backup (setup helper asks for it) | ~800 | free |
+| Brevo paid / Amazon SES | thousands | low monthly cost |
+| **Sign in with Microsoft** | unlimited (no email sent) | free |
+
+The sending limits above are approximate; check each provider's current figures.
+
+When the main account hits its daily limit, RideSync **switches to the backup automatically** and logs it in the terminal. If every account is used up, students see "Login emails are busy right now… or use Sign in with Microsoft" instead of waiting for a code that never arrives. To spread out the launch, open sign-ups one year or branch at a time.
+
 ## 3b. The easy way to set up email, payments and maps
 
 Run the setup helper. It asks for each key, saves it to `.env`, and **sends you a real test email** (or checks your Razorpay keys) so you know it works:
@@ -162,7 +179,7 @@ docs/              design notes and how matching works
 ## Checks
 
 ```bash
-npm test          # 29 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds and webhooks
+npm test          # 30 tests: a full two-account ride, Microsoft sign-in, Razorpay payments, refunds and webhooks
 npm run typecheck
 ```
 

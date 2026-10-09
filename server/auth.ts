@@ -3,12 +3,12 @@ import type { NextFunction, Request, Response } from 'express'
 import { OAuth2Client } from 'google-auth-library'
 import { isCollegeEmail } from '../src/lib/validation'
 import { one, run, type Row } from './db'
-import { env, smtpConfigured } from './env'
+import { env, anyMailConfigured } from './env'
 import { HttpError, newId, notify, nowIso } from './logic'
 import { sendLoginCode } from './mail'
 
 const COOKIE = 'rs_session'
-const SESSION_DAYS = 30
+const SESSION_DAYS = env.sessionDays
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
 
 declare module 'express-serve-static-core' {
@@ -129,7 +129,7 @@ const OTP_MAX_PER_HOUR = 5
 const OTP_MAX_ATTEMPTS = 5
 const ipHits = new Map<string, { n: number; since: number }>()
 
-export const otpEnabled = () => smtpConfigured() || !env.isProd
+export const otpEnabled = () => anyMailConfigured() || !env.isProd
 
 export async function requestCode(emailRaw: string, ip: string) {
   if (!otpEnabled()) throw new HttpError(503, 'Email login isn’t configured on this server. Use Google sign-in.')
@@ -163,6 +163,9 @@ export async function requestCode(emailRaw: string, ip: string) {
   try {
     await sendLoginCode(email, code)
   } catch (e) {
+    // Let the student request again right away once a sender is free.
+    run(`UPDATE otp_codes SET sent_count = MAX(sent_count - 1, 0) WHERE email = ?`, email)
+    if (e instanceof HttpError) throw e
     console.error('[ridesync] mail error', e)
     throw new HttpError(502, 'We couldn’t send the email. Try again in a minute.')
   }

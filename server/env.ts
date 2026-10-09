@@ -21,6 +21,16 @@ export const env = {
     /** Optional: pin the college's Microsoft tenant ID. Looked up from the domain when empty. */
     tenantId: process.env.MICROSOFT_TENANT_ID || '',
   },
+  /** Backup sender used automatically when the main one hits its daily limit (e.g. Brevo free 300/day). */
+  smtpBackup: {
+    host: process.env.SMTP2_HOST || '',
+    port: Number(process.env.SMTP2_PORT || 587),
+    user: process.env.SMTP2_USER || '',
+    pass: process.env.SMTP2_PASS || '',
+    from: process.env.MAIL2_FROM || process.env.MAIL_FROM || '',
+  },
+  /** How long a login lasts on a device, in days. */
+  sessionDays: Number(process.env.SESSION_DAYS || 90),
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT || 587),
@@ -46,6 +56,8 @@ export const env = {
 }
 
 export const smtpConfigured = () => !!(env.smtp.host && env.smtp.user && env.smtp.pass && env.smtp.from)
+export const smtpBackupConfigured = () => !!(env.smtpBackup.host && env.smtpBackup.user && env.smtpBackup.pass && env.smtpBackup.from)
 
 export const microsoftConfigured = () => !!(env.microsoft.clientId && env.microsoft.clientSecret)
 export const razorpayConfigured = () => !!(env.razorpay.keyId && env.razorpay.keySecret)
+export const anyMailConfigured = () => smtpConfigured() || smtpBackupConfigured()
