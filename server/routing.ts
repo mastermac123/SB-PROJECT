@@ -1,5 +1,6 @@
 import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '../src/lib/geo'
 import type { LatLng } from '../src/lib/types'
+import { all } from './db'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
 import { olaDirections } from './landmarks'
@@ -69,15 +70,63 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
   }
 }
 
+type Band = 'rush' | 'day' | 'evening' | 'night'
+const bandOf = (when: Date): Band => {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(when))
+  return (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 'rush' : h >= 11 && h < 17 ? 'day' : h >= 21 && h < 23 ? 'evening' : 'night'
+}
+/** Typical Mumbai door-to-door car speeds (km/h) — what Google Maps usually shows for city trips. */
+const MUMBAI_KMH: Record<Band, number> = { rush: 17, day: 20, evening: 24, night: 32 }
+
+let learned: { at: number; kmh: Partial<Record<Band, number>> } = { at: 0, kmh: {} }
 /**
- * Optional typical-city-speed minimum (Mumbai) for the hour. Off by default so trip times come
- * only from real traffic data; set CITY_SPEED_FLOOR=on in .env to use it.
+ * Real speeds from RideSync's own completed trips (pickup → drop times), per time of day, from the
+ * last 60 days. Needs at least 5 trips in a band; until then the Mumbai typical speed is used.
+ */
+/** Test hook. */
+export const resetLearnedSpeeds = () => {
+  learned = { at: 0, kmh: {} }
+}
+
+export function learnedSpeeds(): Partial<Record<Band, number>> {
+  if (Date.now() - learned.at < 10 * 60_000) return learned.kmh
+  const by: Record<Band, number[]> = { rush: [], day: [], evening: [], night: [] }
+  try {
+    const rows = all<{ pickup: string; drop_place: string; picked_up_at: string; dropped_at: string }>(
+      `SELECT pickup, drop_place, picked_up_at, dropped_at FROM bookings WHERE status = 'completed' AND picked_up_at IS NOT NULL AND dropped_at IS NOT NULL AND dropped_at >= ?`,
+      new Date(Date.now() - 60 * 86_400_000).toISOString(),
+    )
+    for (const r of rows) {
+      const a = JSON.parse(r.pickup) as LatLng
+      const b = JSON.parse(r.drop_place) as LatLng
+      const min = (new Date(r.dropped_at).getTime() - new Date(r.picked_up_at).getTime()) / 60_000
+      const km = haversineKm(a, b) * ROAD_CIRCUITY
+      if (km < 2 || min < 4 || min > 180) continue
+      by[bandOf(new Date(r.picked_up_at))].push(km / (min / 60))
+    }
+  } catch {
+    /* database not ready */
+  }
+  const kmh: Partial<Record<Band, number>> = {}
+  for (const k of Object.keys(by) as Band[]) {
+    const v = by[k].sort((x, y) => x - y)
+    if (v.length >= 5) kmh[k] = Math.min(45, Math.max(8, v[Math.floor(v.length / 2)]))
+  }
+  learned = { at: Date.now(), kmh }
+  return kmh
+}
+
+/**
+ * Realistic minimum trip time for Mumbai at that hour. Free traffic feeds (TomTom, Ola) often
+ * show Mumbai roads faster than they really are, which put RideSync ~30 min ahead of Google Maps
+ * at rush hour. Uses RideSync's own trip history once there's enough; on by default
+ * (CITY_SPEED_FLOOR=off disables it). Not applied when Google traffic is in use.
  */
 export function cityFloorMin(distanceKm: number, when = new Date()): number {
-  if (process.env.CITY_SPEED_FLOOR !== 'on') return 0
-  const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(when))
-  const kmh = (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 15 : h >= 11 && h < 17 ? 20 : h >= 21 && h < 23 ? 26 : 34
-  return Math.round((distanceKm / kmh) * 60 + 1)
+  if (process.env.CITY_SPEED_FLOOR === 'off' || googleConfigured()) return 0
+  const band = bandOf(when)
+  const kmh = learnedSpeeds()[band] ?? MUMBAI_KMH[band]
+  return Math.round((distanceKm / kmh) * 60 + 2)
 }
 
 const olaCache = new Map<string, { at: number; min: number | null }>()

@@ -76,7 +76,9 @@ export const env = {
     /** Separate key restricted to your website, for the map shown in the browser. Defaults to the key above. */
     browserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_API_KEY || '',
     /** Set to false to keep the free OpenStreetMap map while still using Google search and routes. */
-    display: process.env.GOOGLE_MAPS_DISPLAY ? bool(process.env.GOOGLE_MAPS_DISPLAY) : true,
+    display: process.env.GOOGLE_MAPS_DISPLAY ? bool(process.env.GOOGLE_MAPS_DISPLAY) : !bool(process.env.GOOGLE_ROUTES_ONLY),
+    /** Use Google only for trip times (traffic) — map, search and names stay on the free services. Keeps usage tiny. */
+    routesOnly: bool(process.env.GOOGLE_ROUTES_ONLY),
   },
   /** Optional: Razorpay payment gateway (test keys start with rzp_test_). */
   razorpay: {

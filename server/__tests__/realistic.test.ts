@@ -50,6 +50,30 @@ describe('Realistic Mumbai trip times', () => {
     // 3 km: at least ~6 min even at night, ~13 min in the evening rush.
     expect(cityFloorMin(3, new Date('2026-10-10T03:00:00+05:30'))).toBeGreaterThanOrEqual(6)
     expect(cityFloorMin(3, new Date('2026-10-10T18:30:00+05:30'))).toBe(13)
-    expect(cityFloorMin(3, new Date('2026-10-10T12:00:00+05:30'))).toBe(10)
+    expect(cityFloorMin(3, new Date('2026-10-10T12:00:00+05:30'))).toBe(11)
+  })
+})
+
+describe('Learning real speeds from RideSync trips', () => {
+  it('uses the median speed of completed trips once there are 5 in that time of day', async () => {
+    const { run } = await import('../db')
+    const { learnedSpeeds, resetLearnedSpeeds } = await import('../routing')
+    // 5 evening-rush trips of ~10 road-km taking 50 min each → ~12 km/h.
+    const a = { lat: 19.0222, lng: 72.8711 }
+    const b = { lat: 19.0222 + 0.0647, lng: 72.8711 } // ~7.2 km straight → ~10 km by road
+    for (let i = 0; i < 5; i++) {
+      const start = new Date(Date.now() - (i + 1) * 86_400_000)
+      start.setUTCHours(13, 0, 0, 0) // 18:30 IST
+      run(`INSERT INTO users (id, email, name, created_at) VALUES (?, ?, 'T', ?) ON CONFLICT DO NOTHING`, 'u_learn', 'learn@vit.edu.in', start.toISOString())
+      run(`INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, vehicle_id, route, distance_km, duration_min, status, created_at) VALUES (?, 'u_learn', '{}', '{}', ?, 3, 50, 2, 'v', '[]', 10, 20, 'completed', ?)`, `r_l${i}`, start.toISOString(), start.toISOString())
+      run(
+        `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, picked_up_at, dropped_at, created_at, updated_at) VALUES (?, ?, 'u_learn', ?, ?, 1, 50, 'completed', 90, ?, ?, ?, ?)`,
+        `b_l${i}`, `r_l${i}`, JSON.stringify(a), JSON.stringify(b), start.toISOString(), new Date(start.getTime() + 50 * 60_000).toISOString(), start.toISOString(), start.toISOString(),
+      )
+    }
+    resetLearnedSpeeds()
+    const kmh = learnedSpeeds().rush!
+    expect(kmh).toBeGreaterThan(9)
+    expect(kmh).toBeLessThan(15)
   })
 })

@@ -38,7 +38,7 @@ export async function checkMapTiler(): Promise<'ok' | 'rejected' | 'unreachable'
 }
 
 export function mapsConfig() {
-  const google = googleConfigured()
+  const google = googleConfigured() && !env.google.routesOnly
   return {
     google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
     tiles: maptiler()
@@ -99,7 +99,7 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < 3600_000) return hit.places
   let places: Place[] = []
-  if (googleConfigured()) {
+  if (googleConfigured() && !env.google.routesOnly) {
     try {
       places = await googleAutocomplete(q, sessionToken)
       cache.set(key, { at: Date.now(), places })
@@ -174,7 +174,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ name: 
 }
 
 async function lookupName(lat: number, lng: number): Promise<{ name: string; area: string } | null> {
-  if (googleConfigured()) {
+  if (googleConfigured() && !env.google.routesOnly) {
     try {
       const r = await googleReverse(lat, lng)
       if (r) return r

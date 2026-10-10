@@ -164,11 +164,13 @@ if (await yes('Set up Razorpay online payments?')) {
 }
 
 /* ---- Google Maps ------------------------------------------------------------ */
-if (await yes('Set up Google Maps (map, place search and routes)?')) {
-  console.log('\n  console.cloud.google.com → new project → turn on billing → enable: Maps JavaScript API, Places API (New),\n  Geocoding API, Routes API → APIs & Services → Credentials → Create credentials → API key.\n')
+if (await yes('Set up Google (most accurate Mumbai trip times — like Google Maps)?')) {
+  console.log('\n  console.cloud.google.com → new project → turn on billing (needs a card; the free monthly allowance covers a college carpool)\n  → enable Routes API (plus Places API (New), Geocoding API, Maps JavaScript API if you want Google for everything)\n  → APIs & Services → Credentials → Create credentials → API key.\n  Tip: Billing → Budgets & alerts → set a ₹100 budget so you are warned long before any charge.\n')
   const key = (await ask('Google Maps API key (starts with AIza)', env.get('GOOGLE_MAPS_API_KEY'))).trim()
   if (key) {
     env.set('GOOGLE_MAPS_API_KEY', key)
+    const only = await yes('Use Google ONLY for trip times (recommended — map, search and names stay free, so usage stays tiny)?')
+    env.set('GOOGLE_ROUTES_ONLY', only ? 'true' : 'false')
     save()
     const H = { 'X-Goog-Api-Key': key, 'Content-Type': 'application/json' }
     const checks = [

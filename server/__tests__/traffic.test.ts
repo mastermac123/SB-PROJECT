@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 process.env.DATABASE_PATH = ':memory:'
 process.env.DEV_LOGIN = 'true'
 process.env.TOMTOM_KEY = 'tt_test'
+process.env.CITY_SPEED_FLOOR = 'off' // this file checks raw TomTom numbers
 process.env.OSRM_URL = 'http://127.0.0.1:9'
 
 let app: Parameters<typeof request>[0]
