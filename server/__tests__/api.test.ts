@@ -258,6 +258,21 @@ describe('safety', () => {
     const me = await stu.get('/api/me')
     expect(me.body).toMatchObject({ idStatus: 'verified', verified: true })
     expect((await admin.post(`/api/admin/id-cards/${item.userId}`).set(H).send({ approve: false })).status).toBe(404)
+
+    // Admin dashboard: totals, 14-day activity, rides and users lists — admins only.
+    expect((await stu.get('/api/admin/stats')).status).toBe(403)
+    const stats = (await admin.get('/api/admin/stats')).body
+    expect(stats.users.verified).toBeGreaterThanOrEqual(1)
+    expect(stats.rides.completed).toBeGreaterThanOrEqual(1)
+    expect(stats.bookings.completed).toBeGreaterThanOrEqual(1)
+    expect(stats.daily).toHaveLength(14)
+    expect(stats.daily.at(-1).booked).toBeGreaterThanOrEqual(1)
+    const rides = (await admin.get('/api/admin/rides?status=completed')).body
+    expect(rides[0]).toMatchObject({ status: 'completed', driver: expect.any(String) })
+    expect(rides[0].riders.length).toBeGreaterThanOrEqual(1)
+    const users = (await admin.get('/api/admin/users?q=ravi')).body
+    expect(users).toHaveLength(1)
+    expect(users[0]).toMatchObject({ email: 'ravi.k@vit.edu.in', idStatus: 'verified' })
   })
 
   it('locks the PIN after 5 wrong tries and alerts the rider', async () => {

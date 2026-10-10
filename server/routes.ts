@@ -1398,7 +1398,7 @@ api.put(
     if (me(req).id_status === 'verified') throw new HttpError(409, 'Your student ID is already verified.')
     run(`UPDATE users SET id_card = ?, id_status = 'pending', id_note = NULL, id_submitted_at = ? WHERE id = ?`, image, nowIso(), meId(req))
     for (const a of all<{ id: string }>(`SELECT id FROM users WHERE deleted = 0 AND LOWER(email) IN (${env.adminEmails.map(() => '?').join(',') || "''"})`, ...env.adminEmails))
-      notify(a.id, 'system', 'Student ID to check', `${me(req).name} uploaded their ID card.`, '/admin/verify')
+      notify(a.id, 'system', 'Student ID to check', `${me(req).name} uploaded their ID card.`, '/admin/ids')
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),
 )
@@ -1441,5 +1441,136 @@ api.post(
       notify(String(u.id), 'system', 'ID card not verified', `${note} Upload a clearer photo of your VIT ID card.`, '/profile')
     }
     sync([String(u.id)])
+  }),
+)
+
+/* ---- Admin dashboard ---------------------------------------------------- */
+
+const count = (sql: string, ...p: unknown[]) => Number(one<{ n: number }>(sql, ...p)?.n ?? 0)
+const nameOf = (id: unknown) => String(one(`SELECT name FROM users WHERE id = ?`, id)?.name ?? 'Deleted user')
+
+api.get(
+  '/admin/stats',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const since = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+    const byStatus = (table: string) => Object.fromEntries(all<{ status: string; n: number }>(`SELECT status, COUNT(*) n FROM ${table} GROUP BY status`).map((r) => [r.status, Number(r.n)]))
+    const rides = byStatus('rides')
+    const bookings = byStatus('bookings')
+    // Last 14 days, one row per day (local day in India).
+    const days = [...Array(14)].map((_, i) => {
+      const d = new Date(Date.now() + 5.5 * 3600_000 - (13 - i) * 86_400_000).toISOString().slice(0, 10)
+      return d
+    })
+    const perDay = (sql: string) => Object.fromEntries(all<{ d: string; n: number }>(sql, since(15)).map((r) => [r.d, Number(r.n)]))
+    const day = `date(datetime(%s, '+330 minutes'))`
+    const booked = perDay(`SELECT ${day.replace('%s', 'created_at')} d, COUNT(*) n FROM bookings WHERE created_at >= ? GROUP BY d`)
+    const completed = perDay(`SELECT ${day.replace('%s', 'dropped_at')} d, COUNT(*) n FROM bookings WHERE status = 'completed' AND dropped_at >= ? GROUP BY d`)
+    const cancelled = perDay(`SELECT ${day.replace('%s', 'updated_at')} d, COUNT(*) n FROM bookings WHERE status = 'cancelled' AND updated_at >= ? GROUP BY d`)
+    const offered = perDay(`SELECT ${day.replace('%s', 'created_at')} d, COUNT(*) n FROM rides WHERE created_at >= ? GROUP BY d`)
+    return {
+      users: {
+        total: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0`),
+        onboarded: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND onboarded = 1`),
+        drivers: count(`SELECT COUNT(*) n FROM vehicles`),
+        newThisWeek: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND created_at >= ?`, since(7)),
+        verified: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'verified'`),
+        pendingIds: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'pending'`),
+        rejectedIds: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'rejected'`),
+      },
+      rides: {
+        total: Object.values(rides).reduce((a, b) => a + b, 0),
+        scheduled: rides.scheduled ?? 0,
+        live: rides.in_progress ?? 0,
+        completed: rides.completed ?? 0,
+        cancelled: rides.cancelled ?? 0,
+        womenOnly: count(`SELECT COUNT(*) n FROM rides WHERE women_only = 1`),
+      },
+      bookings: {
+        total: Object.values(bookings).reduce((a, b) => a + b, 0),
+        pending: bookings.pending ?? 0,
+        upcoming: (bookings.accepted ?? 0) + (bookings.confirmed ?? 0),
+        live: (bookings.driver_arriving ?? 0) + (bookings.driver_arrived ?? 0) + (bookings.in_progress ?? 0),
+        completed: bookings.completed ?? 0,
+        cancelled: bookings.cancelled ?? 0,
+        cancelledByRider: count(`SELECT COUNT(*) n FROM bookings WHERE status = 'cancelled' AND cancelled_by = 'rider'`),
+        cancelledByDriver: count(`SELECT COUNT(*) n FROM bookings WHERE status = 'cancelled' AND cancelled_by = 'driver'`),
+        declined: bookings.rejected ?? 0,
+        expired: bookings.expired ?? 0,
+        sharedTrips: count(`SELECT COUNT(*) n FROM bookings WHERE share_token IS NOT NULL`),
+      },
+      money: {
+        fares: count(`SELECT COALESCE(SUM(fare), 0) n FROM bookings WHERE status = 'completed'`),
+        online: count(`SELECT COALESCE(SUM(fare), 0) n FROM bookings WHERE payment_status = 'paid_online'`),
+        walletTopups: count(`SELECT COALESCE(SUM(amount), 0) n FROM wallet_tx WHERE kind = 'topup' AND status = 'done'`),
+        refunds: count(`SELECT COUNT(*) n FROM bookings WHERE payment_status = 'refunded'`),
+        co2Kg: Math.round(count(`SELECT COALESCE(SUM(seats), 0) n FROM bookings WHERE status = 'completed'`) * 2.4),
+      },
+      daily: days.map((d) => ({ day: d, offered: offered[d] ?? 0, booked: booked[d] ?? 0, completed: completed[d] ?? 0, cancelled: cancelled[d] ?? 0 })),
+    }
+  }),
+)
+
+/** Latest rides with their driver and riders — the admin's "what's happening" list. */
+api.get(
+  '/admin/rides',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const status = String(req.query.status ?? '')
+    const rows = all(
+      `SELECT * FROM rides ${['scheduled', 'in_progress', 'completed', 'cancelled'].includes(status) ? 'WHERE status = ?' : ''} ORDER BY created_at DESC LIMIT 60`,
+      ...(status && ['scheduled', 'in_progress', 'completed', 'cancelled'].includes(status) ? [status] : []),
+    )
+    return rows.map((r) => {
+      const bs = all(`SELECT rider_id, status, seats, fare, cancelled_by, cancel_reason FROM bookings WHERE ride_id = ? ORDER BY created_at`, r.id)
+      return {
+        id: String(r.id),
+        driver: nameOf(r.driver_id),
+        from: JSON.parse(String(r.origin)).name as string,
+        to: JSON.parse(String(r.destination)).name as string,
+        departAt: String(r.depart_at),
+        createdAt: String(r.created_at),
+        status: String(r.status),
+        womenOnly: !!Number(r.women_only),
+        seatsTotal: Number(r.seats_total),
+        farePerSeat: Number(r.fare_per_seat),
+        riders: bs.map((b) => ({ name: nameOf(b.rider_id), status: String(b.status), seats: Number(b.seats), fare: Number(b.fare), cancelledBy: (b.cancelled_by as string) || undefined, reason: (b.cancel_reason as string) || undefined })),
+      }
+    })
+  }),
+)
+
+api.get(
+  '/admin/users',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const q = `%${String(req.query.q ?? '').trim().toLowerCase()}%`
+    return all(
+      `SELECT u.*, (SELECT COUNT(*) FROM rides WHERE driver_id = u.id) offered,
+              (SELECT COUNT(*) FROM bookings WHERE rider_id = u.id AND status = 'completed') taken,
+              (SELECT COUNT(*) FROM bookings WHERE rider_id = u.id AND status = 'cancelled' AND cancelled_by = 'rider') cancels
+       FROM users u WHERE u.deleted = 0 AND (LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(u.student_id) LIKE ?)
+       ORDER BY u.created_at DESC LIMIT 100`,
+      q,
+      q,
+      q,
+    ).map((u) => ({
+      id: String(u.id),
+      name: String(u.name),
+      email: String(u.email),
+      studentId: String(u.student_id),
+      phone: String(u.phone),
+      gender: String(u.gender),
+      idStatus: String(u.id_status ?? 'none'),
+      onboarded: !!Number(u.onboarded),
+      hasCar: !!vehicleFor(String(u.id)),
+      offered: Number(u.offered),
+      taken: Number(u.taken),
+      cancels: Number(u.cancels),
+      createdAt: String(u.created_at),
+    }))
   }),
 )

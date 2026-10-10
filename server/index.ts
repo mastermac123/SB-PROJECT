@@ -20,7 +20,7 @@ const server = app.listen(env.port, () => {
     if (envFile.found) console.log(`[ridesync] ⚠ Email is off because .env is missing: ${missing.join(', ')}. Run setup.bat, answer y to the email question and enter the Gmail App Password.`)
   }
   if (anyMailConfigured()) void verifyMail()
-  console.log(env.adminEmails.length ? `[ridesync] ID card approvals: ${env.adminEmails.join(', ')} (Profile → Verify student IDs)` : '[ridesync] ID card approvals: no admin yet — run setup.bat and answer y to the admin question')
+  console.log(env.adminEmails.length ? `[ridesync] ID card approvals: ${env.adminEmails.join(', ')} — admin dashboard at /admin` : '[ridesync] ID card approvals: no admin yet — run setup.bat and answer y to the admin question')
   console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] ⚠ Razorpay not set — Wallet "Add money" and online payment are off. Run setup.bat, answer y to Razorpay and paste your Key Id + Key Secret.')
   void checkRazorpay().then((r) => {
     if (r === 'ok') console.log('[ridesync] Razorpay keys work ✓ (Wallet and online payment ready)')

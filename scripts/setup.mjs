@@ -141,7 +141,7 @@ if (await yes(`Set the admin email (approves students' ID cards for the Verified
   if (a) {
     env.set('ADMIN_EMAILS', a)
     save()
-    console.log('  Saved ✓  Sign in with that email → Profile → "Verify student IDs".\n')
+    console.log('  Saved ✓  Sign in with that email and open /admin (or Profile → Admin dashboard).\n')
   }
 }
 

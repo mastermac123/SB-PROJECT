@@ -18,7 +18,7 @@ import { MyRides } from './screens/rides'
 import { TripStatus } from './screens/trip'
 import { Wallet } from './screens/wallet'
 import { SharedTripPage } from './screens/sharedTrip'
-import { AdminVerify } from './screens/adminVerify'
+import { AdminApp } from './screens/admin'
 import { SearchProvider } from './state/search'
 
 export function App() {
@@ -35,6 +35,8 @@ export function App() {
               <Route path="/design-system" element={<DesignSystem />} />
               <Route path="/states" element={<StatesGallery />} />
               <Route path="/t/:token" element={<SharedTripPage />} />
+              <Route path="/admin" element={<AdminApp />} />
+              <Route path="/admin/:tab" element={<AdminApp />} />
 
               {/* Primary destinations — bottom navigation on mobile */}
               <Route element={<AppShell nav />}>
@@ -59,7 +61,6 @@ export function App() {
                 <Route path="/chat" element={<ChatList />} />
                 <Route path="/chat/:bookingId" element={<ChatThread />} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/admin/verify" element={<AdminVerify />} />
                 <Route path="/profile/:section" element={<ProfileSection />} />
               </Route>
 

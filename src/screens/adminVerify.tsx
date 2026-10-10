@@ -1,38 +1,19 @@
 import { BadgeCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { NetworkError, StateView } from '@/components/States'
 import { useToast } from '@/components/Toast'
-import { Button, Chip, RideCardSkeleton } from '@/components/ui'
+import { Button, Chip } from '@/components/ui'
 import { relative } from '@/lib/format'
-import { Page } from '@/layouts/Page'
-import { ApiError, Q, admin, useMe, useQuery, type IdCardReview } from '@/services/api'
+import { ApiError, admin, type IdCardReview } from '@/services/api'
 
 const REASONS = ['Photo not clear', 'Name doesn’t match profile', 'Not a VIT ID card', 'Student ID doesn’t match']
 
-/** Admins (ADMIN_EMAILS) check uploaded VIT ID cards and grant the Verified badge. */
+/** Old address — the ID checks now live in the admin dashboard. */
 export function AdminVerify() {
-  const { user } = useMe()
-  const q = useQuery<IdCardReview[]>(user?.isAdmin ? Q.idCards : null)
-  if (!user?.isAdmin) return <Navigate to="/profile" replace />
-  return (
-    <Page title="Verify student IDs">
-      <div className="stack gap-4">
-        {q.loading ? (
-          <RideCardSkeleton />
-        ) : q.error && !q.data ? (
-          <NetworkError onRetry={q.reload} />
-        ) : !q.data?.length ? (
-          <StateView icon={<BadgeCheck />} tone="neutral" title="All caught up" body="New ID cards will appear here, and you’ll get a notification." />
-        ) : (
-          q.data.map((c) => <Review key={c.userId} c={c} onDone={q.reload} />)
-        )}
-      </div>
-    </Page>
-  )
+  return <Navigate to="/admin/ids" replace />
 }
 
-function Review({ c, onDone }: { c: IdCardReview; onDone: () => void }) {
+export function Review({ c, onDone }: { c: IdCardReview; onDone: () => void }) {
   const toast = useToast()
   const [reason, setReason] = useState(REASONS[0])
   const [busy, setBusy] = useState<'yes' | 'no' | null>(null)

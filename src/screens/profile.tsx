@@ -87,7 +87,7 @@ export function Profile() {
         )}
 
         <div className="list">
-          {u.isAdmin && <ListRow icon={<ShieldCheck />} title="Verify student IDs" subtitle="Admin · review uploaded ID cards" onClick={() => nav('/admin/verify')} />}
+          {u.isAdmin && <ListRow icon={<ShieldCheck />} title="Admin dashboard" subtitle="Rides, bookings, cancellations, students and ID checks" onClick={() => nav('/admin')} />}
           <ListRow icon={<UserRound />} title="Personal Information" subtitle={`${u.email}`} onClick={() => nav('/profile/personal')} />
           <ListRow icon={<CarFront />} title="Vehicle Information" subtitle={u.vehicle ? `${u.vehicle.make} ${u.vehicle.model} · ${u.vehicle.plate}` : 'Add a car to offer rides'} onClick={() => nav('/profile/vehicle')} />
           <ListRow icon={<SlidersHorizontal />} title="Preferences" subtitle={u.preferences.length ? u.preferences.map((p) => PREFERENCE_LABEL[p]).join(', ') : 'Commute mode and ride preferences'} onClick={() => nav('/profile/preferences')} />
