@@ -72,6 +72,9 @@ class PublicUser {
   final int ridesOffered;
   final int ridesTaken;
   final double completionRate;
+
+  /// Student ID card checked by a RideSync admin.
+  final bool verified;
   const PublicUser({
     required this.id,
     required this.name,
@@ -82,6 +85,7 @@ class PublicUser {
     this.ridesOffered = 0,
     this.ridesTaken = 0,
     this.completionRate = 0,
+    this.verified = false,
   });
   factory PublicUser.fromJson(Map<String, dynamic> j) => PublicUser(
         id: _s(j['id']),
@@ -93,6 +97,7 @@ class PublicUser {
         ridesOffered: _i(j['ridesOffered']),
         ridesTaken: _i(j['ridesTaken']),
         completionRate: _d(j['completionRate']),
+        verified: j['verified'] == true,
       );
   String get firstName => name.split(' ').first;
 }
@@ -117,6 +122,13 @@ class User extends PublicUser {
   final bool onboarded;
   final double co2SavedKg;
 
+  /// Student ID verification: 'none' | 'pending' | 'verified' | 'rejected'.
+  final String idStatus;
+
+  /// Why the ID card was rejected.
+  final String? idNote;
+  final bool isAdmin;
+
   User.fromJson(Map<String, dynamic> j)
       : email = _s(j['email']),
         phone = _s(j['phone']),
@@ -129,6 +141,9 @@ class User extends PublicUser {
         vehicle = j['vehicle'] is Map ? Vehicle.fromJson((j['vehicle'] as Map).cast<String, dynamic>()) : null,
         onboarded = j['onboarded'] == true,
         co2SavedKg = _d(j['co2SavedKg']),
+        idStatus = _s(j['idStatus']).isEmpty ? (j['verified'] == true ? 'verified' : 'none') : _s(j['idStatus']),
+        idNote = _ns(j['idNote']),
+        isAdmin = j['isAdmin'] == true,
         super(
           id: _s(j['id']),
           name: _s(j['name']),
@@ -139,6 +154,7 @@ class User extends PublicUser {
           ridesOffered: _i(j['ridesOffered']),
           ridesTaken: _i(j['ridesTaken']),
           completionRate: _d(j['completionRate']),
+          verified: j['verified'] == true || j['idStatus'] == 'verified',
         );
 
   bool get canDrive => vehicle != null;
@@ -172,6 +188,9 @@ class Ride {
   final List<LatLngPoint> route;
   final DriverLocation? driverLocation;
 
+  /// Only female students can see and book it.
+  final bool womenOnly;
+
   Ride.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         driverId = _s(j['driverId']),
@@ -188,7 +207,8 @@ class Ride {
         distanceKm = _d(j['distanceKm']),
         durationMin = _i(j['durationMin']),
         route = _maps(j['route']).map(LatLngPoint.fromJson).toList(),
-        driverLocation = j['driverLocation'] is Map ? DriverLocation.fromJson((j['driverLocation'] as Map).cast<String, dynamic>()) : null;
+        driverLocation = j['driverLocation'] is Map ? DriverLocation.fromJson((j['driverLocation'] as Map).cast<String, dynamic>()) : null,
+        womenOnly = j['womenOnly'] == true;
 
   int get seatsLeft => seatsTotal - seatsBooked;
 }
@@ -314,6 +334,9 @@ class BookingDetail {
   final String? driverPhone;
   final String? driverUpiId;
   final String? riderPhone;
+
+  /// 4-digit code the rider tells the driver at pickup (rider only, until picked up).
+  final String? ridePin;
   BookingDetail.fromJson(Map<String, dynamic> j)
       : role = _s(j['role']),
         booking = Booking.fromJson((j['booking'] as Map).cast<String, dynamic>()),
@@ -323,7 +346,8 @@ class BookingDetail {
         rider = PublicUser.fromJson((j['rider'] as Map).cast<String, dynamic>()),
         driverPhone = _ns(j['driverPhone']),
         driverUpiId = _ns(j['driverUpiId']),
-        riderPhone = _ns(j['riderPhone']);
+        riderPhone = _ns(j['riderPhone']),
+        ridePin = _ns(j['ridePin']);
   bool get isRider => role == 'rider';
 }
 

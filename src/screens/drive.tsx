@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CarFront, Check, CircleCheck, Flag, Info, LocateFixed, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
+import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MatchScore } from '@/components/MatchScore'
@@ -13,7 +13,8 @@ import { etaBubble, useTripEta } from '@/components/TripTime'
 import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
-import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, VerifiedBadge } from '@/components/ui'
+import { PinEntrySheet, WomenOnlyTag } from '@/components/Safety'
+import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, money, plural, time } from '@/lib/format'
@@ -46,6 +47,7 @@ export function OfferRide() {
   const [draft, setDraft] = useState<TripDraft>(incoming ? { ...incoming, seats: Math.min(Math.max(incoming.seats, 1), maxSeats) } : { pickup: base.pickup, drop: null, date: base.date, time: base.time, seats: Math.min(3, maxSeats) })
   const [detour, setDetour] = useState<'1' | '2' | '3' | '5'>('3')
   const [prefs, setPrefs] = useState<RidePreference[]>(u.preferences.filter((p) => p !== 'minimal_detour'))
+  const [womenOnly, setWomenOnly] = useState(false)
   const [note, setNote] = useState('')
   const [route, setRoute] = useState<RouteInfo | null>(null)
   const [fare, setFare] = useState<number | null>(null)
@@ -104,6 +106,7 @@ export function OfferRide() {
         maxDetourKm: Number(detour),
         preferences: prefs,
         note: note.trim() || undefined,
+        womenOnly: u.gender === 'female' && womenOnly,
       })
       celebrate({ kind: 'published', title: 'Ride offered successfully', body: 'VIT students heading your way can see it and request a seat now. We’ll notify you the moment someone does.' })
       nav(`/drive/${ride.id}`, { replace: true })
@@ -215,6 +218,15 @@ export function OfferRide() {
               </Chip>
             ))}
           </div>
+          {u.gender === 'female' && (
+            <label className="row gap-3 women-toggle">
+              <span className="stack grow" style={{ minWidth: 0 }}>
+                <span className="t-body t-strong">Women-only ride</span>
+                <span className="t-sm t-muted">Only female VIT students can see and book it</span>
+              </span>
+              <Switch checked={womenOnly} onChange={setWomenOnly} label="Women-only ride" />
+            </label>
+          )}
         </section>
 
         <section className="stack gap-3">
@@ -463,7 +475,10 @@ export function DriverRide() {
       <div className="stack gap-5">
         <div className="stack gap-3">
           <div className="row row--between">
-            {statusBadge}
+            <span className="row gap-2">
+              {statusBadge}
+              {ride.womenOnly && <WomenOnlyTag />}
+            </span>
             <span className="t-sm t-muted">{dayTime(ride.departAt)}</span>
           </div>
           <Stops
@@ -614,6 +629,8 @@ export function DriverRide() {
 
 function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderBooking; live: boolean; done: boolean; busy: boolean; onStep: (fn: () => Promise<unknown>, ok?: string) => void; onChat: () => void; onRemove: () => void }) {
   const name = firstName(b.rider.name)
+  const celebrate = useCelebrate()
+  const [pinOpen, setPinOpen] = useState(false)
   const statusBadge =
     b.status === 'accepted' ? (
       <Badge tone="warning">Awaiting payment</Badge>
@@ -631,7 +648,7 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
   return (
     <div className="request-card" style={{ gap: 12 }}>
       <div className="row gap-3">
-        <Avatar name={b.rider.name} src={b.rider.photo} size="sm" verified />
+        <Avatar name={b.rider.name} src={b.rider.photo} size="sm" verified={b.rider.verified} />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="t-body t-strong truncate">{b.rider.name}</span>
           <span className="t-sm t-muted truncate">
@@ -669,8 +686,8 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
             </Button>
           )}
           {live && b.status === 'driver_arrived' && (
-            <Button size="sm" loading={busy} onClick={() => onStep(() => bookings.pickedUp(b.id))}>
-              Picked up
+            <Button size="sm" loading={busy} icon={<KeyRound />} onClick={() => setPinOpen(true)}>
+              Enter PIN
             </Button>
           )}
           {live && b.status === 'in_progress' && (
@@ -695,6 +712,16 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
           ))}
         </div>
       )}
+      <PinEntrySheet
+        open={pinOpen}
+        name={name}
+        onClose={() => setPinOpen(false)}
+        onVerify={async (pin) => {
+          await bookings.pickedUp(b.id, pin)
+          setPinOpen(false)
+          celebrate({ kind: 'started', title: 'PIN verified', body: `${name} is in the car. Drive safe!` })
+        }}
+      />
     </div>
   )
 }
@@ -704,7 +731,7 @@ function RequestCard({ booking, onAccept, onDecline, busy, full }: { booking: Ri
   return (
     <div className="request-card">
       <div className="row gap-3">
-        <Avatar name={rider.name} src={rider.photo} verified />
+        <Avatar name={rider.name} src={rider.photo} verified={rider.verified} />
         <div className="stack grow" style={{ minWidth: 0 }}>
           <span className="t-body t-strong truncate">{rider.name}</span>
           <Rating value={rider.rating} count={rider.ridesTaken} />
@@ -712,7 +739,7 @@ function RequestCard({ booking, onAccept, onDecline, busy, full }: { booking: Ri
         <MatchScore score={booking.matchScore} tier={tierFor(booking.matchScore)} label="compatible" />
       </div>
       <div className="row wrap gap-2">
-        <VerifiedBadge />
+        {rider.verified && <VerifiedBadge />}
         {booking.seats > 1 && <Badge>{plural(booking.seats, 'seat')}</Badge>}
       </div>
       <Stops from={{ title: booking.pickup.name, subtitle: booking.pickup.area }} to={{ title: booking.drop.name }} />

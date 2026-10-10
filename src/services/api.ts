@@ -333,6 +333,18 @@ export async function updateMe(patch: ProfilePatch) {
   return u
 }
 
+/** Student ID card photo for the Verified badge (reviewed by a RideSync admin). */
+export async function uploadIdCard(image: string) {
+  const u = await request<User>('PUT', '/me/id-card', { image })
+  setCached('/me', u)
+  return u
+}
+
+export type IdCardReview = { userId: string; name: string; email: string; studentId: string; programme?: string; image: string; submittedAt: string }
+export const admin = {
+  review: (userId: string, approve: boolean, note?: string) => mutate(post(`/admin/id-cards/${userId}`, { approve, note })),
+}
+
 export async function saveVehicle(v: Omit<Vehicle, 'id'>) {
   const u = await request<User>('PUT', '/me/vehicle', v)
   setCached('/me', u)
@@ -419,6 +431,7 @@ export type OfferInput = {
   maxDetourKm: number
   preferences: RidePreference[]
   note?: string
+  womenOnly?: boolean
 }
 
 async function mutate<T>(p: Promise<T>) {
@@ -442,7 +455,8 @@ export const bookings = {
   paymentReceived: (id: string) => mutate(post(`/bookings/${id}/payment-received`)),
   cancel: (id: string, reason: string) => mutate(post(`/bookings/${id}/cancel`, { reason })),
   arrived: (id: string) => mutate(post(`/bookings/${id}/arrived`)),
-  pickedUp: (id: string) => mutate(post(`/bookings/${id}/picked-up`)),
+  pickedUp: (id: string, pin?: string) => mutate(post(`/bookings/${id}/picked-up`, { pin })),
+  share: (id: string) => post<{ url: string; text: string; local: boolean }>(`/bookings/${id}/share`),
   dropped: (id: string) => mutate(post(`/bookings/${id}/dropped`)),
   rate: (id: string, stars: number, tags: string[], comment: string) => mutate(post(`/bookings/${id}/rate`, { stars, tags, comment })),
   send: (id: string, text: string) => mutate(post(`/bookings/${id}/messages`, { text })),
@@ -464,6 +478,8 @@ export const Q = {
   notifications: '/notifications',
   payments: '/payments',
   wallet: '/wallet',
+  idCards: '/admin/id-cards',
+  shared: (token: string) => `/share/${token}`,
   badges: '/badges',
 }
 

@@ -34,6 +34,7 @@ import type { CommuteMode, Gender, RidePreference } from '@/lib/types'
 import { validatePhone, validateStudentId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
 import { ApiError, auth, deleteAccount, notificationPermission, removeVehicle, requestNotificationPermission, saveVehicle, updateMe, useMe } from '@/services/api'
+import { IdVerifyCard } from '@/components/Safety'
 import { PREF_OPTIONS } from './find'
 
 export function Profile() {
@@ -47,7 +48,7 @@ export function Profile() {
       <div className="stack gap-6">
         <div className="profile-head">
           <button type="button" onClick={() => nav('/profile/personal')} aria-label="Edit profile photo" style={{ borderRadius: '50%' }}>
-            <Avatar name={u.name} src={u.photo} size="xl" verified />
+            <Avatar name={u.name} src={u.photo} size="xl" verified={u.verified} />
           </button>
           <div className="stack gap-1" style={{ alignItems: 'center' }}>
             <h1 className="t-h2">{u.name}</h1>
@@ -55,8 +56,10 @@ export function Profile() {
               {u.studentId} · {u.email}
             </span>
           </div>
-          <VerifiedBadge />
+          {u.verified && <VerifiedBadge />}
         </div>
+
+        <IdVerifyCard user={u} />
 
         <div className="card stats">
           <div className="stat">
@@ -84,6 +87,7 @@ export function Profile() {
         )}
 
         <div className="list">
+          {u.isAdmin && <ListRow icon={<ShieldCheck />} title="Verify student IDs" subtitle="Admin · review uploaded ID cards" onClick={() => nav('/admin/verify')} />}
           <ListRow icon={<UserRound />} title="Personal Information" subtitle={`${u.email}`} onClick={() => nav('/profile/personal')} />
           <ListRow icon={<CarFront />} title="Vehicle Information" subtitle={u.vehicle ? `${u.vehicle.make} ${u.vehicle.model} · ${u.vehicle.plate}` : 'Add a car to offer rides'} onClick={() => nav('/profile/vehicle')} />
           <ListRow icon={<SlidersHorizontal />} title="Preferences" subtitle={u.preferences.length ? u.preferences.map((p) => PREFERENCE_LABEL[p]).join(', ') : 'Commute mode and ride preferences'} onClick={() => nav('/profile/preferences')} />

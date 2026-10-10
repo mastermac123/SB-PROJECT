@@ -40,7 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Row(children: [
           Avatar(name: widget.other.name, photo: widget.other.photo, size: 34),
           const SizedBox(width: 10),
-          Expanded(child: Text(widget.other.name, style: RS.heading(17), overflow: TextOverflow.ellipsis)),
+          Expanded(child: Align(alignment: Alignment.centerLeft, child: NameWithBadge(widget.other, style: RS.heading(17)))),
         ]),
       ),
       body: LiveLoader<List<Message>>(

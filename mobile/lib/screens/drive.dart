@@ -15,6 +15,7 @@ import '../widgets/ride_card.dart';
 import '../widgets/map_sheet.dart';
 import '../widgets/motion.dart';
 import '../widgets/ride_map.dart';
+import '../widgets/safety.dart';
 import '../widgets/trip_time.dart';
 import 'chat.dart';
 import 'find.dart';
@@ -37,6 +38,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   late int _seats = (context.read<Session>().user!.vehicle?.seats ?? 3).clamp(1, 4);
   double _detour = 2;
   final Set<String> _prefs = {};
+  bool _womenOnly = false;
   final _note = TextEditingController();
   RouteInfo? _route;
   bool _routing = false;
@@ -47,6 +49,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   String get _fuel => context.read<Session>().user!.vehicle?.fuel ?? 'petrol';
   int? get _suggested => _route == null ? null : suggestFarePerSeat(_route!.distanceKm, _seats, _fuel);
   int get _effectiveFare => _fare ?? _suggested ?? 0;
+  bool get _canWomenOnly => context.read<Session>().user?.gender == 'female';
 
   Future<void> _loadRoute() async {
     if (_to == null) return;
@@ -82,6 +85,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         'maxDetourKm': _detour,
         'preferences': _prefs.toList(),
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
+        if (_womenOnly && _canWomenOnly) 'womenOnly': true,
       });
       if (!mounted) return;
       await showMoment(context, Moment.published, 'Ride offered successfully', subtitle: 'Students going your way can see it and book now.');
@@ -93,7 +97,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vehicle = context.read<Session>().user!.vehicle!;
+    final user = context.watch<Session>().user!;
+    final vehicle = user.vehicle!;
     final suggested = _suggested;
     final maxFare = suggested == null ? 0 : maxFareFor(suggested);
     return MapSheetScaffold(
@@ -189,6 +194,21 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
               for (final e in preferenceLabel.entries)
                 FilterChip(label: Text(e.value), selected: _prefs.contains(e.key), showCheckmark: false, onSelected: (on) => setState(() => on ? _prefs.add(e.key) : _prefs.remove(e.key))),
             ]),
+            if (user.gender == 'female') ...[
+              const SizedBox(height: 12),
+              Panel(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _womenOnly,
+                  activeThumbColor: WomenOnlyPill.fg,
+                  onChanged: (v) => setState(() => _womenOnly = v),
+                  secondary: const Icon(Icons.female_rounded, color: WomenOnlyPill.fg),
+                  title: const Text('Women-only ride', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Only female students can see and book'),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(controller: _note, maxLength: 200, decoration: const InputDecoration(labelText: 'Note for riders (optional)', hintText: 'e.g. Leaving from the main gate')),
             const SizedBox(height: 8),
@@ -393,7 +413,7 @@ class _RiderPanel extends StatelessWidget {
         ? null
         : switch (b.status) {
             'driver_arriving' => ('I’ve arrived at pickup', () => api.arrived(b.id)),
-            'driver_arrived' => ('${r.rider.firstName} is in the car', () => api.pickedUp(b.id)),
+            'driver_arrived' => ('${r.rider.firstName} is in the car', null),
             'in_progress' => ('Dropped off ${r.rider.firstName}', () => api.dropped(b.id)),
             _ => null,
           };
@@ -423,7 +443,11 @@ class _RiderPanel extends StatelessWidget {
         ]),
         if (next != null) ...[
           const SizedBox(height: 10),
-          FilledButton(onPressed: () => attempt(context, next.$2), child: Text(next.$1)),
+          FilledButton(
+            // Picking up needs the rider's PIN; the sheet shows the server's answer itself.
+            onPressed: () => next.$2 == null ? showPickupPinSheet(context, bookingId: b.id, firstName: r.rider.firstName) : attempt(context, next.$2!),
+            child: Text(next.$1),
+          ),
         ],
       ]),
     );

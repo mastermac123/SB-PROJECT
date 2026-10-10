@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { AppNotification, Booking, BookingStatus, NotificationKind, Place, PublicUser, Ride, User, Vehicle } from '../src/lib/types'
 import { all, one, run, type Row } from './db'
 import { emit, sync } from './events'
+import { env } from './env'
 
 export const newId = (prefix: string) => `${prefix}_${randomBytes(9).toString('base64url')}`
 export const nowIso = () => new Date().toISOString()
@@ -78,8 +79,11 @@ export function publicUser(row: Row | string): PublicUser {
     ridesOffered: s.ridesOffered,
     ridesTaken: s.ridesTaken,
     completionRate: s.completionRate,
+    verified: u.id_status === 'verified' || undefined,
   }
 }
+
+export const isAdmin = (email: string) => env.adminEmails.includes(email.toLowerCase())
 
 export function meUser(row: Row): User {
   const s = userStats(String(row.id))
@@ -97,6 +101,9 @@ export function meUser(row: Row): User {
     onboarded: !!Number(row.onboarded),
     co2SavedKg: s.co2SavedKg,
     createdAt: String(row.created_at),
+    idStatus: ((row.id_status as string) || 'none') as User['idStatus'],
+    idNote: (row.id_note as string) || undefined,
+    isAdmin: isAdmin(String(row.email)) || undefined,
   }
 }
 
@@ -126,6 +133,7 @@ export function toRide(r: Row, opts: { location?: boolean } = {}): Ride {
     durationMin: Number(r.duration_min),
     route: json(r.route, []),
     driverLocation: opts.location ? json(r.driver_location, undefined) : undefined,
+    womenOnly: Number(r.women_only) ? true : undefined,
   }
 }
 

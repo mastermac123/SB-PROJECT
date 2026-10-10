@@ -136,7 +136,7 @@ function FeedRow({ item }: { item: FeedItem }) {
   const left = ride.seatsTotal - ride.seatsBooked
   return (
     <button type="button" className="context-row context-row--emph" onClick={() => nav(`/ride/${ride.id}`, { state: { own: true } })}>
-      <Avatar name={driver.name} src={driver.photo} size="sm" verified />
+      <Avatar name={driver.name} src={driver.photo} size="sm" verified={driver.verified} />
       <span className="stack grow" style={{ minWidth: 0 }}>
         <span className="t-body t-strong row gap-1 truncate" style={{ display: 'flex' }}>
           <span className="truncate">{ride.origin.name}</span>
@@ -161,7 +161,7 @@ function UpcomingBooking({ booking }: { booking: TripItem }) {
   const live = (LIVE_STATUSES as readonly string[]).includes(booking.status)
   return (
     <button type="button" className="context-row context-row--emph" onClick={() => nav(live ? `/live/${booking.id}` : `/trip/${booking.id}`)}>
-      <Avatar name={booking.driver.name} src={booking.driver.photo} size="sm" verified />
+      <Avatar name={booking.driver.name} src={booking.driver.photo} size="sm" verified={booking.driver.verified} />
       <span className="stack grow" style={{ minWidth: 0 }}>
         <span className="t-body t-strong truncate">
           {booking.pickup.name} → {booking.drop.name}

@@ -39,6 +39,8 @@ export type PublicUser = {
   ridesOffered: number
   ridesTaken: number
   completionRate: number // 0–1
+  /** Student ID card checked by RideSync. */
+  verified?: boolean
 }
 
 /** The signed-in user. */
@@ -55,7 +57,14 @@ export type User = PublicUser & {
   onboarded: boolean
   co2SavedKg: number
   createdAt: string
+  /** Student ID card check: none → pending → verified / rejected. */
+  idStatus: IdStatus
+  idNote?: string
+  /** Can approve student ID cards. */
+  isAdmin?: boolean
 }
+
+export type IdStatus = 'none' | 'pending' | 'verified' | 'rejected'
 
 export type RideStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
 
@@ -80,6 +89,8 @@ export type Ride = {
   durationMin: number
   route: LatLng[]
   driverLocation?: DriverLocation
+  /** Only female students can see and book it. */
+  womenOnly?: boolean
 }
 
 export type BookingStatus =
@@ -204,6 +215,24 @@ export type BookingDetail = {
   driverPhone?: string
   driverUpiId?: string
   riderPhone?: string
+  /** Rider only: 4-digit code the driver must enter at pickup. */
+  ridePin?: string
+}
+
+/** Public, read-only live view of a trip shared with family or friends. */
+export type SharedTrip = {
+  rider: string
+  driver: { name: string; photo?: string; rating: number; verified?: boolean }
+  vehicle: { make: string; model: string; color: string; plate: string }
+  pickup: Place
+  drop: Place
+  departAt: string
+  status: BookingStatus
+  rideStatus: RideStatus
+  route: LatLng[]
+  driverLocation?: DriverLocation
+  pickedUpAt?: string
+  droppedAt?: string
 }
 
 export type TripItem = Booking & { ride: Ride; driver: PublicUser }

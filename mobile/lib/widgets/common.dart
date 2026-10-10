@@ -309,3 +309,37 @@ class _LiveLoaderState<T> extends State<LiveLoader<T>> with WidgetsBindingObserv
     return widget.refreshable ? RefreshIndicator(color: RS.primary, onRefresh: _reload, child: body) : body;
   }
 }
+
+/// Blue tick next to a name: this student's VIT ID card was checked.
+class VerifiedBadge extends StatelessWidget {
+  const VerifiedBadge({super.key, this.size = 16});
+  final double size;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'Verified student',
+        child: Icon(Icons.verified, size: size, color: RS.route, semanticLabel: 'Verified student'),
+      );
+}
+
+/// Name with the verified tick when it applies.
+class NameWithBadge extends StatelessWidget {
+  const NameWithBadge(this.user, {super.key, this.style, this.text});
+  final PublicUser user;
+  final TextStyle? style;
+
+  /// Defaults to the full name.
+  final String? text;
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(child: Text(text ?? user.name, style: style, overflow: TextOverflow.ellipsis)),
+        if (user.verified) ...[const SizedBox(width: 4), const VerifiedBadge()],
+      ]);
+}
+
+class WomenOnlyPill extends StatelessWidget {
+  const WomenOnlyPill({super.key});
+  static const fg = Color(0xFFD6336C);
+  static const bg = Color(0xFFFFE3EC);
+  @override
+  Widget build(BuildContext context) => const Pill('Women only', icon: Icons.female_rounded, color: fg, background: bg);
+}

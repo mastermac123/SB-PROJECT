@@ -1,3 +1,4 @@
+import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { haversineKm } from '../src/lib/geo'
@@ -9,6 +10,7 @@ import type {
   PaymentRecord,
   RideDetail,
   SearchQuery,
+  SharedTrip,
   Thread,
   Trips,
 } from '../src/lib/types'
@@ -23,6 +25,7 @@ import {
   HttpError,
   bookingRow,
   first,
+  isAdmin,
   meUser,
   money,
   newId,
@@ -442,7 +445,7 @@ api.post(
     const target = desiredTime(query).getTime()
     const lo = new Date(Math.max(Date.now(), target - 4.5 * 3600_000)).toISOString()
     const hi = new Date(target + 4.5 * 3600_000).toISOString()
-    const rows = all(`SELECT * FROM rides WHERE status = 'scheduled' AND driver_id != ? AND depart_at > ? AND depart_at < ?`, meId(req), lo, hi)
+    const rows = all(`SELECT * FROM rides WHERE status = 'scheduled' AND driver_id != ? AND depart_at > ? AND depart_at < ? AND (women_only = 0 OR ? = 'female')`, meId(req), lo, hi, me(req).gender)
     const hist = riderHistory(meId(req))
     const results = rows.map((r) => scoreFor(r, query, meId(req), hist)).filter((m): m is MatchResult => !!m)
     return { results: results.sort((a, b) => b.score - a.score), ridesInWindow: rows.length }
@@ -455,10 +458,11 @@ api.get(
   requireOnboarded,
   h((req) => {
     const rows = all(
-      `SELECT * FROM rides WHERE status = 'scheduled' AND driver_id != ? AND depart_at > ? AND depart_at < ? ORDER BY depart_at LIMIT 20`,
+      `SELECT * FROM rides WHERE status = 'scheduled' AND driver_id != ? AND depart_at > ? AND depart_at < ? AND (women_only = 0 OR ? = 'female') ORDER BY depart_at LIMIT 20`,
       meId(req),
       nowIso(),
       new Date(Date.now() + 3 * 86_400_000).toISOString(),
+      me(req).gender,
     )
     return rows
       .map((r) => {
@@ -521,9 +525,11 @@ api.post(
         maxDetourKm: z.number().min(0).max(10),
         preferences: z.array(PrefZ).max(7).default([]),
         note: z.string().max(200).optional(),
+        womenOnly: z.boolean().optional(),
       }),
       req.body,
     )
+    if (p.womenOnly && me(req).gender !== 'female') throw new HttpError(400, 'Women-only rides can be offered by female students. Set your gender in Profile → Edit.', 'womenOnly')
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     if (p.seats > vehicle.seats) throw new HttpError(400, `Your ${vehicle.model} has ${vehicle.seats} passenger seats.`, 'seats')
@@ -545,8 +551,8 @@ api.post(
 
     const id = newId('r')
     run(
-      `INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, preferences, vehicle_id, note, status, route, distance_km, duration_min, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)`,
+      `INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, preferences, vehicle_id, note, status, route, distance_km, duration_min, women_only, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?)`,
       id,
       meId(req),
       JSON.stringify(p.origin),
@@ -561,6 +567,7 @@ api.post(
       JSON.stringify(route.coords),
       Math.round(route.distanceKm * 10) / 10,
       route.durationMin,
+      p.womenOnly ? 1 : 0,
       nowIso(),
     )
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
@@ -721,6 +728,7 @@ api.post(
     const query = p.query as SearchQuery
     const r = rideRow(p.rideId)
     if (String(r.driver_id) === meId(req)) throw new HttpError(400, 'You can’t book your own ride.')
+    if (Number(r.women_only) && me(req).gender !== 'female') throw new HttpError(403, 'This is a women-only ride.')
     if (r.status !== 'scheduled' || new Date(String(r.depart_at)) < new Date()) throw new HttpError(409, 'This ride is no longer available.')
     const existing = one(`SELECT * FROM bookings WHERE ride_id = ? AND rider_id = ? AND status IN (${ACTIVE.map((s) => `'${s}'`).join(',')})`, r.id, meId(req))
     if (existing) return toBooking(existing)
@@ -730,8 +738,8 @@ api.post(
     const id = newId('b')
     const now = nowIso()
     run(
-      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?)`,
+      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?)`,
       id,
       r.id,
       meId(req),
@@ -741,6 +749,7 @@ api.post(
       match.fare * query.seats,
       match.score,
       p.message?.trim() || null,
+      newPin(),
       now,
       now,
     )
@@ -769,6 +778,7 @@ api.get(
       driverUpiId: role === 'rider' && HOLDING.includes(booking.status) ? (driverRow?.upi_id as string) || undefined : undefined,
       driverPhone: role === 'rider' && showContact ? String(driverRow?.phone ?? '') || undefined : undefined,
       riderPhone: role === 'driver' && showContact ? String(riderRow?.phone ?? '') || undefined : undefined,
+      ridePin: role === 'rider' && PIN_VISIBLE.includes(booking.status) ? pinFor(b) : undefined,
     }
     return out
   }),
@@ -1085,7 +1095,16 @@ api.post(
     driverStep(req, ['driver_arriving'], 'driver_arrived', 'arrived_at', (n) => [`${n} has arrived`, `Look for a ${v?.color ?? ''} ${v?.model ?? 'car'} · ${v?.plate ?? ''}`])
   }),
 )
-api.post('/bookings/:id/picked-up', requireOnboarded, h((req) => driverStep(req, ['driver_arriving', 'driver_arrived'], 'in_progress', 'picked_up_at')))
+api.post(
+  '/bookings/:id/picked-up',
+  requireOnboarded,
+  h((req) => {
+    const { pin } = parse(z.object({ pin: z.string().max(8).optional() }), req.body ?? {})
+    const { b, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role === 'driver' && b.ride_pin) checkPin(b, pin ?? '')
+    driverStep(req, ['driver_arriving', 'driver_arrived'], 'in_progress', 'picked_up_at')
+  }),
+)
 api.post(
   '/bookings/:id/dropped',
   requireOnboarded,
@@ -1271,4 +1290,156 @@ api.get(
       one<{ n: number }>(`SELECT COUNT(*) n FROM bookings b JOIN rides r ON r.id = b.ride_id WHERE r.driver_id = ? AND r.status = 'scheduled' AND b.status = 'pending'`, meId(req))?.n ?? 0,
     ),
   })),
+)
+
+/* ---- Safety: ride start PIN ----------------------------------------------- */
+
+/** The rider sees their PIN from acceptance until pickup. */
+const PIN_VISIBLE = ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived']
+const newPin = () => String(randomInt(0, 10_000)).padStart(4, '0')
+
+/** Bookings made before PINs existed get one the first time the rider looks. */
+function pinFor(b: Row): string {
+  if (b.ride_pin) return String(b.ride_pin)
+  const pin = newPin()
+  run(`UPDATE bookings SET ride_pin = ? WHERE id = ? AND ride_pin IS NULL`, pin, b.id)
+  return String(one(`SELECT ride_pin FROM bookings WHERE id = ?`, b.id)?.ride_pin ?? pin)
+}
+
+/** Driver must type the rider's 4-digit PIN to start their trip. 5 wrong tries → 5-minute lock + rider alert. */
+function checkPin(b: Row, pin: string) {
+  if (b.pin_locked_until && new Date(String(b.pin_locked_until)) > new Date()) throw new HttpError(429, 'Too many wrong PINs. Wait 5 minutes and ask the rider to show the PIN on their screen.', 'pin')
+  const want = Buffer.from(String(b.ride_pin))
+  const got = Buffer.from(pin.replace(/\D/g, '').padEnd(want.length, 'x').slice(0, want.length))
+  if (timingSafeEqual(want, got)) {
+    run(`UPDATE bookings SET pin_attempts = 0, pin_locked_until = NULL WHERE id = ?`, b.id)
+    return
+  }
+  const tries = Number(b.pin_attempts ?? 0) + 1
+  if (tries >= 5) {
+    run(`UPDATE bookings SET pin_attempts = 0, pin_locked_until = ? WHERE id = ?`, new Date(Date.now() + 5 * 60_000).toISOString(), b.id)
+    const v = vehicleFor(String(rideRow(String(b.ride_id)).driver_id))
+    notify(String(b.rider_id), 'cancelled', 'Wrong ride PIN entered 5 times', `Only get in if the car is a ${v?.color ?? ''} ${v?.model ?? ''} · ${v?.plate ?? ''}. If anything feels wrong, use SOS.`, `/live/${b.id}`)
+    throw new HttpError(429, 'Wrong PIN 5 times — locked for 5 minutes. The rider has been alerted.', 'pin')
+  }
+  run(`UPDATE bookings SET pin_attempts = ? WHERE id = ?`, tries, b.id)
+  throw new HttpError(400, `Wrong PIN. Ask the rider for the 4-digit code on their screen (${5 - tries} tries left).`, 'pin')
+}
+
+/* ---- Safety: share live trip -------------------------------------------- */
+
+const isLocal = (u: string) => /\/\/(localhost|127\.|10\.|192\.168\.|\[::1\])/.test(u)
+
+/** Address family and friends can open: the public URL, else the address this request came in on (the share.bat link). */
+function publicBase(req: Request) {
+  const origin = req.get('origin')
+  const host = `${req.protocol}://${req.get('x-forwarded-host') ?? req.get('host')}`
+  return [env.publicUrl, origin, host].find((u) => u && !isLocal(u)) ?? origin ?? host
+}
+
+api.post(
+  '/bookings/:id/share',
+  requireOnboarded,
+  h((req) => {
+    const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (!ACTIVE.includes(b.status as never) && b.status !== 'completed') throw new HttpError(409, 'This trip has ended.')
+    let token = b.share_token as string | null
+    if (!token) {
+      token = randomBytes(12).toString('base64url')
+      run(`UPDATE bookings SET share_token = ? WHERE id = ?`, token, b.id)
+    }
+    const url = `${publicBase(req)}/t/${token}`
+    const v = vehicleFor(String(r.driver_id))
+    const driver = first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'my driver'))
+    const who = role === 'rider' ? 'I’m' : `${first(String(me(req).name))} is`
+    const text = `${who} on a RideSync trip with ${driver} (VIT student) in a ${v?.color ?? ''} ${v?.model ?? 'car'} · ${v?.plate ?? ''}.\nTrack it live: ${url}`
+    return { url, text, local: isLocal(url) }
+  }),
+)
+
+/** Public: no sign-in. Works while the trip is on and for 2 hours after it ends. */
+api.get(
+  '/share/:token',
+  h((req) => {
+    const b = one(`SELECT * FROM bookings WHERE share_token = ?`, param(req, 'token'))
+    if (!b) throw new HttpError(404, 'This trip link isn’t valid.')
+    const ended = ['completed', 'cancelled', 'rejected', 'expired'].includes(String(b.status))
+    if (ended && Date.now() - new Date(String(b.updated_at)).getTime() > 2 * 3600_000) throw new HttpError(410, 'This trip has ended.')
+    const r = rideRow(String(b.ride_id))
+    const d = one(`SELECT * FROM users WHERE id = ?`, r.driver_id)
+    const pub = publicUser(d ?? String(r.driver_id))
+    const v = vehicleFor(String(r.driver_id))
+    const live = r.status === 'in_progress' && ['driver_arriving', 'driver_arrived', 'in_progress'].includes(String(b.status))
+    const out: SharedTrip = {
+      rider: first(String(one(`SELECT name FROM users WHERE id = ?`, b.rider_id)?.name ?? 'Rider')),
+      driver: { name: pub.name, photo: pub.photo, rating: pub.rating, verified: pub.verified },
+      vehicle: { make: v?.make ?? '', model: v?.model ?? '', color: v?.color ?? '', plate: v?.plate ?? '' },
+      pickup: JSON.parse(String(b.pickup)),
+      drop: JSON.parse(String(b.drop_place)),
+      departAt: String(r.depart_at),
+      status: b.status as SharedTrip['status'],
+      rideStatus: r.status as SharedTrip['rideStatus'],
+      route: JSON.parse(String(r.route)),
+      driverLocation: live && r.driver_location ? JSON.parse(String(r.driver_location)) : undefined,
+      pickedUpAt: (b.picked_up_at as string) || undefined,
+      droppedAt: (b.dropped_at as string) || undefined,
+    }
+    return out
+  }),
+)
+
+/* ---- Safety: verified student ID ---------------------------------------- */
+
+api.put(
+  '/me/id-card',
+  requireUser,
+  h((req) => {
+    const { image } = parse(z.object({ image: z.string().max(380_000).regex(/^data:image\/(jpeg|png|webp);base64,/, 'Upload a photo of your ID card') }), req.body)
+    if (me(req).id_status === 'verified') throw new HttpError(409, 'Your student ID is already verified.')
+    run(`UPDATE users SET id_card = ?, id_status = 'pending', id_note = NULL, id_submitted_at = ? WHERE id = ?`, image, nowIso(), meId(req))
+    for (const a of all<{ id: string }>(`SELECT id FROM users WHERE deleted = 0 AND LOWER(email) IN (${env.adminEmails.map(() => '?').join(',') || "''"})`, ...env.adminEmails))
+      notify(a.id, 'system', 'Student ID to check', `${me(req).name} uploaded their ID card.`, '/admin/verify')
+    return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
+  }),
+)
+
+const requireAdmin = (req: Request) => {
+  if (!isAdmin(String(me(req).email))) throw new HttpError(403, 'Only RideSync admins can do this.')
+}
+
+api.get(
+  '/admin/id-cards',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    return all(`SELECT id, name, email, student_id, programme, id_card, id_submitted_at FROM users WHERE id_status = 'pending' AND deleted = 0 ORDER BY id_submitted_at`).map((u) => ({
+      userId: String(u.id),
+      name: String(u.name),
+      email: String(u.email),
+      studentId: String(u.student_id),
+      programme: (u.programme as string) || undefined,
+      image: String(u.id_card),
+      submittedAt: String(u.id_submitted_at),
+    }))
+  }),
+)
+
+api.post(
+  '/admin/id-cards/:userId',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const p = parse(z.object({ approve: z.boolean(), note: z.string().max(140).optional() }), req.body)
+    const u = one(`SELECT id, id_status FROM users WHERE id = ?`, param(req, 'userId'))
+    if (!u || u.id_status !== 'pending') throw new HttpError(404, 'Already reviewed.')
+    if (p.approve) {
+      run(`UPDATE users SET id_status = 'verified', id_note = NULL, id_card = NULL WHERE id = ?`, u.id)
+      notify(String(u.id), 'system', 'You’re verified ✓', 'Your student ID was checked. Others now see the Verified badge on your profile.', '/profile')
+    } else {
+      const note = p.note?.trim() || 'The photo wasn’t clear or didn’t match your profile.'
+      run(`UPDATE users SET id_status = 'rejected', id_note = ?, id_card = NULL WHERE id = ?`, note, u.id)
+      notify(String(u.id), 'system', 'ID card not verified', `${note} Upload a clearer photo of your VIT ID card.`, '/profile')
+    }
+    sync([String(u.id)])
+  }),
 )

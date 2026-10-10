@@ -57,6 +57,7 @@ class DriverRow extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(child: Text(driver.name, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+              if (driver.verified) ...[const SizedBox(width: 4), const VerifiedBadge()],
               const SizedBox(width: 6),
               RatingText(driver),
             ]),
@@ -90,6 +91,7 @@ class RideCard extends StatelessWidget {
           if (score != null) ...[MatchBadge(score: score!, tier: tier), const SizedBox(width: 8)],
           Text(money(fare ?? ride.farePerSeat), style: RS.heading(18, color: RS.primary)),
         ]),
+        if (ride.womenOnly) ...[const SizedBox(height: 8), const WomenOnlyPill()],
         const SizedBox(height: 12),
         RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: timeOf(arrive), dense: true),
         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),

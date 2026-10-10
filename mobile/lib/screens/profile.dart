@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../api/api.dart';
@@ -11,6 +12,7 @@ import '../util/validation.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
 import '../widgets/photo_picker.dart';
+import '../widgets/safety.dart';
 import '../widgets/vehicle_form.dart';
 import 'drive.dart';
 import 'trip.dart';
@@ -34,10 +36,16 @@ class ProfileTab extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(u.name, style: RS.heading(20)),
+                  NameWithBadge(u, style: RS.heading(20)),
                   Text(u.email, style: const TextStyle(color: RS.ink500, fontSize: 13)),
                   const SizedBox(height: 6),
-                  Row(children: [RatingText(u), const SizedBox(width: 8), const Pill('VIT verified', icon: Icons.verified, color: RS.success, background: RS.success50)]),
+                  Row(children: [
+                    RatingText(u),
+                    const SizedBox(width: 8),
+                    u.verified
+                        ? const Pill('Verified student', icon: Icons.verified, color: RS.success, background: RS.success50)
+                        : const Pill('VIT email', icon: Icons.alternate_email_rounded, color: RS.ink700, background: RS.sunken),
+                  ]),
                 ]),
               ),
             ]),
@@ -50,6 +58,8 @@ class ProfileTab extends StatelessWidget {
             const SizedBox(width: 10),
             _stat('${u.co2SavedKg.toStringAsFixed(1)} kg', 'CO₂ saved'),
           ]),
+          const SectionTitle('Student ID verification'),
+          _IdVerificationCard(user: u),
           const SectionTitle('Account'),
           _group([
             _row(Icons.person_outline, 'Personal information', u.phone.isEmpty ? null : '+91 ${u.phone}', () => open(const EditProfileScreen())),
@@ -113,6 +123,71 @@ class ProfileTab extends StatelessWidget {
     if (ok != true || !context.mounted) return;
     final session = context.read<Session>();
     if (await attempt(context, session.api.deleteAccount)) await session.signOut(remote: false);
+  }
+}
+
+/// Upload a photo of the VIT ID card; an admin checks it on the website.
+class _IdVerificationCard extends StatefulWidget {
+  const _IdVerificationCard({required this.user});
+  final User user;
+  @override
+  State<_IdVerificationCard> createState() => _IdVerificationCardState();
+}
+
+class _IdVerificationCardState extends State<_IdVerificationCard> {
+  bool _busy = false;
+
+  Future<void> _pick() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 4), child: Text('Photo of your VIT ID card', style: RS.heading(20))),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text('Lay the card flat in good light so your name, photo and ID number are readable. Only RideSync admins see it, and it’s deleted once checked.', style: TextStyle(color: RS.ink500, height: 1.4)),
+          ),
+          ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.pop(sheet, ImageSource.camera)),
+          ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.pop(sheet, ImageSource.gallery)),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (source == null || !mounted) return;
+    setState(() => _busy = true);
+    await uploadIdCard(context, source);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = widget.user;
+    final status = u.verified ? 'verified' : u.idStatus;
+    final (IconData icon, Color fg, Color bg, String title, String body) = switch (status) {
+      'verified' => (Icons.verified, RS.success, RS.success50, 'Verified student ✓', 'Riders and drivers see the verified badge next to your name.'),
+      'pending' => (Icons.hourglass_top_rounded, RS.warning, RS.warning50, 'Under review', 'We’re checking your ID card. You’ll get a notification when it’s done.'),
+      'rejected' => (Icons.error_outline, RS.danger, RS.danger50, 'ID card not verified', u.idNote ?? 'We couldn’t read your ID card. Upload a clearer photo.'),
+      _ => (Icons.badge_outlined, RS.primary, RS.primary50, 'Get the verified badge', 'Upload a photo of your VIT ID card. Verified students get more ride requests and accepts.'),
+    };
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          CircleAvatar(backgroundColor: bg, child: Icon(icon, color: fg)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: status == 'verified' ? RS.success : RS.ink900)),
+              const SizedBox(height: 2),
+              Text(body, style: const TextStyle(color: RS.ink500, fontSize: 13, height: 1.35)),
+            ]),
+          ),
+        ]),
+        if (status == 'none' || status == 'rejected') ...[
+          const SizedBox(height: 14),
+          LoadingButton(label: status == 'rejected' ? 'Upload again' : 'Get verified', icon: Icons.upload_rounded, loading: _busy, secondary: status == 'rejected', onPressed: _pick),
+        ],
+      ]),
+    );
   }
 }
 

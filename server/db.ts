@@ -140,6 +140,17 @@ function addColumn(table: string, column: string, type: string) {
 addColumn('bookings', 'gateway_order_id', 'TEXT')
 addColumn('bookings', 'gateway_payment_id', 'TEXT')
 addColumn('bookings', 'refund_id', 'TEXT')
+// Safety: ride start PIN, live trip sharing, women-only rides, verified student ID.
+addColumn('bookings', 'ride_pin', 'TEXT')
+addColumn('bookings', 'pin_attempts', 'INTEGER NOT NULL DEFAULT 0')
+addColumn('bookings', 'pin_locked_until', 'TEXT')
+addColumn('bookings', 'share_token', 'TEXT')
+addColumn('rides', 'women_only', 'INTEGER NOT NULL DEFAULT 0')
+addColumn('users', 'id_card', 'TEXT')
+addColumn('users', 'id_status', "TEXT NOT NULL DEFAULT 'none'")
+addColumn('users', 'id_note', 'TEXT')
+addColumn('users', 'id_submitted_at', 'TEXT')
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bookings_share ON bookings(share_token)')
 
 // RideSync Wallet: every credit/debit is a row; the balance is their sum (in rupees).
 db.exec(`

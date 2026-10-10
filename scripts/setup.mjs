@@ -135,6 +135,16 @@ if (env.get('SMTP_HOST') && (await yes('Add a BACKUP email account (used automat
   }
 }
 
+/* ---- Admin (approves student ID cards for the Verified badge) ------------------ */
+if (await yes(`Set the admin email (approves students' ID cards for the Verified badge)?${env.get('ADMIN_EMAILS') ? ` [now: ${env.get('ADMIN_EMAILS')}]` : ''}`)) {
+  const a = (await ask('Admin email(s), comma-separated — your own @vit.edu.in email', env.get('ADMIN_EMAILS'))).trim().toLowerCase()
+  if (a) {
+    env.set('ADMIN_EMAILS', a)
+    save()
+    console.log('  Saved ✓  Sign in with that email → Profile → "Verify student IDs".\n')
+  }
+}
+
 /* ---- Razorpay --------------------------------------------------------------- */
 if (await yes('Set up Razorpay online payments?')) {
   console.log('\n  razorpay.com → sign up → Dashboard (Test mode) → Account & Settings → API Keys → Generate Test Key.\n')

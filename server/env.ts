@@ -88,6 +88,11 @@ export const env = {
   devLogin: bool(process.env.DEV_LOGIN) && process.env.NODE_ENV !== 'production',
   /** Public address of the site, e.g. https://ridesync.onrender.com (used for sign-in redirects). */
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
+  /** Emails that can approve student ID cards (comma-separated). */
+  adminEmails: (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 }
 
 export const smtpConfigured = () => !!(env.smtp.host && env.smtp.user && env.smtp.pass && env.smtp.from)

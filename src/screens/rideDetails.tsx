@@ -17,6 +17,7 @@ import type { MatchResult, SearchQuery } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, matchRide, useMe, useQuery, type RideDetail } from '@/services/api'
 import { useSearch, withInstant } from '@/state/search'
+import { WomenOnlyTag } from '@/components/Safety'
 import { RideCardSkeleton } from '@/components/ui'
 
 const ACTIVE_BOOKING = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
@@ -181,7 +182,7 @@ export function RideDetails() {
       <div className="stack gap-5">
         {/* Driver */}
         <div className="row gap-3">
-          <Avatar name={driver.name} src={driver.photo} size="lg" verified />
+          <Avatar name={driver.name} src={driver.photo} size="lg" verified={driver.verified} />
           <div className="stack grow gap-1" style={{ minWidth: 0 }}>
             <span className="t-h3 truncate">{driver.name}</span>
             <Rating value={driver.rating} count={driver.ridesOffered} countLabel="rides offered" />
@@ -191,7 +192,8 @@ export function RideDetails() {
           </div>
         </div>
         <div className="row wrap gap-2">
-          <VerifiedBadge />
+          {driver.verified && <VerifiedBadge />}
+          {ride.womenOnly && <WomenOnlyTag />}
           {driver.completionRate >= 0.95 && <Badge>{Math.round(driver.completionRate * 100)}% rides completed</Badge>}
           {match?.history && <Badge tone="info">{match.history}</Badge>}
         </div>

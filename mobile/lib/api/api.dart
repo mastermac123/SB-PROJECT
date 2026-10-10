@@ -103,6 +103,9 @@ class Api {
   Future<User> saveVehicle(Map<String, dynamic> v) async => User.fromJson(_map(await put('/me/vehicle', v)));
   Future<void> deleteAccount() => delete('/me');
 
+  /// Photo of the VIT ID card as a data URL; the user's idStatus becomes 'pending'.
+  Future<User> uploadIdCard(String image) async => User.fromJson(_map(await put('/me/id-card', {'image': image})));
+
   /* ---- Places & routes ---- */
 
   Future<List<Place>> searchPlaces(String q, String session) async => _list(await get('/places', {'q': q, 's': session})).map(Place.fromJson).toList();
@@ -154,7 +157,13 @@ class Api {
   Future<void> paymentReceived(String id) => post('/bookings/$id/payment-received');
   Future<void> cancelBooking(String id, [String? reason]) => post('/bookings/$id/cancel', {'reason': ?reason});
   Future<void> arrived(String id) => post('/bookings/$id/arrived');
-  Future<void> pickedUp(String id) => post('/bookings/$id/picked-up');
+  /// The driver types the rider's 4-digit ride PIN to start their trip.
+  Future<void> pickedUp(String id, String pin) => post('/bookings/$id/picked-up', {'pin': pin});
+  Future<({String url, String text, bool local})> shareTrip(String id) async {
+    final m = _map(await post('/bookings/$id/share'));
+    return (url: '${m['url'] ?? ''}', text: '${m['text'] ?? ''}', local: m['local'] == true);
+  }
+
   Future<void> dropped(String id) => post('/bookings/$id/dropped');
   Future<void> rate(String id, int stars, [List<String> tags = const []]) => post('/bookings/$id/rate', {'stars': stars, if (tags.isNotEmpty) 'tags': tags});
 

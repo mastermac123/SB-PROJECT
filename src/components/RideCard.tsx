@@ -3,6 +3,7 @@ import { fmtKm } from '@/lib/matching'
 import { dayLabel, firstName, money, time } from '@/lib/format'
 import type { MatchResult } from '@/lib/types'
 import { MatchScore } from './MatchScore'
+import { WomenOnlyTag } from './Safety'
 import { Avatar, Rating, cx } from './ui'
 
 /**
@@ -16,7 +17,7 @@ export function RideCard({ match, onOpen, active, showDay }: { match: MatchResul
   return (
     <button type="button" className={cx('ride-card', active && 'is-active')} onClick={onOpen} aria-label={`Ride with ${driver.name}, ${match.score}% match, departs ${time(ride.departAt)}, ${money(match.fare)} per seat`}>
       <div className="ride-card__head">
-        <Avatar name={driver.name} src={driver.photo} verified />
+        <Avatar name={driver.name} src={driver.photo} verified={driver.verified} />
         <div className="ride-card__who">
           <div className="ride-card__name truncate">{driver.name}</div>
           <div className="ride-card__meta">
@@ -49,6 +50,7 @@ export function RideCard({ match, onOpen, active, showDay }: { match: MatchResul
 
       <div className="ride-card__foot">
         <div className="ride-card__facts">
+          {ride.womenOnly && <WomenOnlyTag />}
           <span>
             <Footprints />
             {match.pickupDistanceKm < 0.15 ? 'Pickup at your location' : `Pickup ${fmtKm(match.pickupDistanceKm)} away`}

@@ -15,7 +15,7 @@ import { firstName, km as fmtKm, money, relative, time } from '@/lib/format'
 import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
-import { shareLink } from './rideDetails'
+import { RidePinCard, useShareTrip } from '@/components/Safety'
 import { paymentLabel, SuccessMark } from './trip'
 
 // Configure per campus before launch; hidden when not set so we never show an unverified number.
@@ -55,7 +55,6 @@ export function LiveRide() {
   const { bookingId } = useParams()
   const { user } = useMe()
   const nav = useNavigate()
-  const toast = useToast()
   const desktop = useIsDesktop()
   const padding = useMapPadding(0.46)
   const [sos, setSos] = useState(false)
@@ -64,6 +63,7 @@ export function LiveRide() {
   useNow(15_000)
   const live = q.data && ['driver_arriving', 'in_progress'].includes(q.data.booking.status) ? (q.data.booking.status === 'in_progress' ? q.data.booking.drop : q.data.booking.pickup) : null
   const etaInfo = useLiveEta(loc ?? null, live)
+  const shareTrip = useShareTrip(bookingId ?? '')
 
   if (q.loading)
     return (
@@ -101,11 +101,6 @@ export function LiveRide() {
         ? { title: `${name} has arrived`, sub: `Look for a ${v.color.toLowerCase()} ${v.model} · ${v.plate}` }
         : { title: eta ? `${eta} min to ${booking.drop.name}` : `On the way to ${booking.drop.name}`, sub: 'Enjoy the ride. Share your trip with someone you trust.' }
 
-  const share = async () => {
-    const text = `I’m riding with ${driver.name} (${v.color} ${v.make} ${v.model}, ${v.plate}) from ${booking.pickup.name} to ${booking.drop.name} via RideSync.${loc ? ` Last location: https://maps.google.com/?q=${loc.lat},${loc.lng}` : ''}`
-    const r = await shareLink('My RideSync trip', text, '')
-    if (r === 'copied') toast({ tone: 'success', message: 'Trip details copied — send them to someone you trust' })
-  }
 
   const markers: MapMarker[] = [
     { id: 'pick', at: booking.pickup, kind: 'pickup', label: booking.status === 'in_progress' ? undefined : 'Pickup', sublabel: booking.status === 'driver_arriving' && eta ? `${name} in ${eta} min` : undefined, darkLabel: true },
@@ -137,7 +132,7 @@ export function LiveRide() {
         <>
           <BackButton surface to={`/trip/${booking.id}`} />
           <span className="grow" />
-          <IconButton label="Share trip" surface onClick={share}>
+          <IconButton label="Share trip" surface onClick={shareTrip.start}>
             <Share2 />
           </IconButton>
         </>
@@ -163,8 +158,9 @@ export function LiveRide() {
           <div className="progress__bar" style={loc ? { width: `${booking.status === 'driver_arrived' ? 100 : Math.round(progress * 100)}%`, background: booking.status === 'in_progress' ? 'var(--success-500)' : undefined } : undefined} />
         </div>
 
+        {d.ridePin && <RidePinCard pin={d.ridePin} plate={v.plate} />}
         <div className="row gap-3">
-          <Avatar name={driver.name} src={driver.photo} size="lg" verified />
+          <Avatar name={driver.name} src={driver.photo} size="lg" verified={driver.verified} />
           <div className="stack grow gap-1" style={{ minWidth: 0 }}>
             <span className="t-h3 truncate">{driver.name}</span>
             <Rating value={driver.rating} />
@@ -191,7 +187,7 @@ export function LiveRide() {
             <MessageCircle />
             Chat
           </button>
-          <button className="action-tile" onClick={share}>
+          <button className="action-tile" onClick={shareTrip.start} disabled={shareTrip.busy}>
             <Share2 />
             Share trip
           </button>
@@ -201,6 +197,7 @@ export function LiveRide() {
           </button>
         </div>
 
+        {shareTrip.sheet}
         <hr className="divider" />
         <Stops from={{ title: booking.pickup.name, subtitle: booking.pickup.area }} to={{ title: booking.drop.name, subtitle: booking.drop.area }} />
         <div className="row row--between t-sm t-muted">
@@ -298,7 +295,7 @@ function RateTrip({ detail }: { detail: BookingDetail }) {
           </div>
         </dl>
         <div className="stack gap-5" style={{ alignItems: 'center', marginTop: 8 }}>
-          <Avatar name={driver.name} src={driver.photo} size="xl" verified />
+          <Avatar name={driver.name} src={driver.photo} size="xl" verified={driver.verified} />
           <h2 className="t-h3">{rated ? `You rated ${firstName(driver.name)}` : `How was your ride with ${firstName(driver.name)}?`}</h2>
           <div className="row gap-2" role="radiogroup" aria-label="Rating">
             {[1, 2, 3, 4, 5].map((n) => (

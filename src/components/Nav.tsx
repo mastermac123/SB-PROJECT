@@ -63,7 +63,7 @@ export function TopNav() {
           {unread > 0 && <span className="dot-badge" />}
         </NavLink>
         <NavLink to="/profile" className="topnav__me" aria-label="Your profile">
-          <Avatar name={u.name} src={u.photo} size="sm" verified />
+          <Avatar name={u.name} src={u.photo} size="sm" verified={u.verified} />
         </NavLink>
       </div>
     </header>

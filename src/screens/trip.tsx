@@ -12,6 +12,7 @@ import { Avatar, Badge, Button, Chip, Notice, Plate, Rating, RideCardSkeleton, V
 import { dayTime, firstName, money, plural, time } from '@/lib/format'
 import type { Booking, BookingStatus } from '@/lib/types'
 import { ApiError, Q, bookings, useQuery, type BookingDetail } from '@/services/api'
+import { RidePinCard, ShareTripButton } from '@/components/Safety'
 import { useSearch } from '@/state/search'
 
 export const BOOKING_STATUS: Record<BookingStatus, { label: string; short: string; tone: 'verified' | 'success' | 'warning' | 'error' | 'info' | undefined }> = {
@@ -42,12 +43,12 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
   return (
     <div className="summary">
       <div className="row gap-3">
-        <Avatar name={driver.name} src={driver.photo} size="lg" verified />
+        <Avatar name={driver.name} src={driver.photo} size="lg" verified={driver.verified} />
         <div className="stack grow gap-1" style={{ minWidth: 0 }}>
           <span className="t-h3 truncate">{driver.name}</span>
           <Rating value={driver.rating} count={driver.ridesOffered} />
         </div>
-        <VerifiedBadge short />
+        {driver.verified && <VerifiedBadge short />}
       </div>
       <div className="vehicle-row">
         <span className="stack grow">
@@ -212,6 +213,7 @@ export function TripStatus() {
                 </a>
               )}
             </div>
+            <ShareTripButton bookingId={booking.id} block />
             {booking.paymentMethod === 'cash' && detail.driverUpiId && (
               <Button variant="ghost" block icon={<Banknote />} onClick={() => nav(`/pay/${booking.id}`)}>
                 Pay by UPI instead
@@ -261,6 +263,11 @@ export function TripStatus() {
             <Notice tone="info" icon={<Clock />}>
               Pay to lock in your seat — online, by UPI to {name}, or in cash at pickup.
             </Notice>
+          </div>
+        )}
+        {detail.ridePin && booking.status !== 'accepted' && (
+          <div style={{ marginBottom: 16 }}>
+            <RidePinCard pin={detail.ridePin} plate={detail.vehicle.plate} />
           </div>
         )}
         <div className="page__sheet-lite">

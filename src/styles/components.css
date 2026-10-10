@@ -1290,3 +1290,72 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
   .celebrate { align-items: end; padding: 0; }
   .celebrate__card { max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: calc(var(--space-5) + var(--safe-bottom)); }
 }
+
+/* ---- Safety: ride PIN, share trip, verified ID, women-only -------------- */
+.badge--women { background: #ffe3ec; color: #b0124f; }
+:root[data-theme="dark"] .badge--women { background: #4a1426; color: #ffb3cb; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge--women { background: #4a1426; color: #ffb3cb; } }
+
+.pin-card {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: var(--radius-lg);
+  background: var(--primary-50); border: 1px solid var(--primary-100);
+}
+.pin-card__icon {
+  display: grid; place-items: center; width: 36px; height: 36px; flex: none;
+  border-radius: var(--radius-full); background: var(--primary-600); color: #fff;
+}
+.pin-card__icon svg { width: 18px; height: 18px; }
+.pin-card__digits { display: flex; gap: 10px; justify-content: center; }
+.pin-card__digits span {
+  display: grid; place-items: center; width: 56px; height: 64px;
+  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm);
+  font-size: 32px; font-weight: 800; letter-spacing: 0; color: var(--ink-900);
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-input { display: flex; gap: 12px; justify-content: center; }
+.pin-input input {
+  width: 60px; height: 68px; text-align: center;
+  font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-md); border: 2px solid var(--border-strong);
+  background: var(--surface); color: var(--ink-900); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pin-input input:focus { border-color: var(--primary-600); box-shadow: 0 0 0 4px var(--primary-100); }
+.pin-input.is-error input { border-color: var(--error-500); animation: pin-shake .35s; }
+@keyframes pin-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .pin-input.is-error input { animation: none; } }
+
+.share-wa { background: #25d366; color: #fff; }
+.share-wa:hover { background: #1ebe5b; }
+.share-wa .btn__label { display: inline-flex; align-items: center; gap: 8px; }
+
+.id-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: var(--radius-lg);
+  background: var(--surface); border: 1px solid var(--border);
+}
+.id-card__icon {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border-radius: var(--radius-full); background: var(--surface-sunken); color: var(--ink-700, var(--ink-900));
+}
+.id-card__icon svg { width: 20px; height: 20px; }
+.id-card--verified .id-card__icon { background: var(--primary-50); color: var(--primary-600); }
+.id-card--pending .id-card__icon { background: var(--warning-50); color: var(--warning-600); }
+.id-card--rejected .id-card__icon { background: var(--error-50); color: var(--error-600); }
+
+.id-review { display: grid; gap: 12px; padding: 16px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
+.id-review img { width: 100%; max-height: 420px; object-fit: contain; border-radius: var(--radius-md); background: var(--surface-sunken); }
+
+.shared-trip { min-height: 100dvh; display: grid; grid-template-rows: minmax(300px, 55dvh) auto; background: var(--surface-sunken); }
+.shared-trip__panel { padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 16px; max-width: 560px; width: 100%; margin: 0 auto; }
+@media (min-width: 900px) {
+  .shared-trip { grid-template-rows: none; grid-template-columns: 1fr 440px; }
+  .shared-trip__panel { max-width: none; overflow: auto; height: 100dvh; background: var(--surface); }
+}
+.women-toggle { padding: 12px 14px; border-radius: var(--radius-lg); background: #fff5f8; border: 1px solid #ffd3e1; }
+:root[data-theme="dark"] .women-toggle { background: #2a1119; border-color: #4a1426; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .women-toggle { background: #2a1119; border-color: #4a1426; } }
+.shared-trip__map { position: relative; overflow: hidden; isolation: isolate; }
+.shared-trip__map > * { position: absolute; inset: 0; }

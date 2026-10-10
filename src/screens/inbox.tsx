@@ -136,7 +136,7 @@ export function ChatList() {
         <div className="list">
           {threads.map((t) => (
             <button key={t.bookingId} type="button" className="list-row" onClick={() => nav(`/chat/${t.bookingId}`)}>
-              <Avatar name={t.other.name} src={t.other.photo} verified />
+              <Avatar name={t.other.name} src={t.other.photo} verified={t.other.verified} />
               <span className="list-row__body">
                 <span className="row row--between gap-2">
                   <span className="list-row__title truncate">{t.other.name}</span>

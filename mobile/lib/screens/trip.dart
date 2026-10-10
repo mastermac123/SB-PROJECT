@@ -19,6 +19,7 @@ import '../widgets/map_sheet.dart';
 import '../widgets/motion.dart';
 import '../widgets/ride_card.dart';
 import '../widgets/ride_map.dart';
+import '../widgets/safety.dart';
 import 'chat.dart';
 import 'drive.dart';
 import 'find.dart';
@@ -150,6 +151,7 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
                   DriverRow(driver: d.driver, vehicle: d.vehicle),
                   const SizedBox(height: 12),
                   Wrap(spacing: 8, runSpacing: 8, children: [
+                    if (ride.womenOnly) const WomenOnlyPill(),
                     Pill('${ride.seatsLeft} of ${ride.seatsTotal} seats left', icon: Icons.event_seat_outlined),
                     if (d.driver.ridesOffered > 0) Pill('${d.driver.ridesOffered} rides driven', color: RS.ink700, background: RS.sunken),
                     if (d.driver.ratingCount > 0) Pill('${(d.driver.completionRate * 100).round()}% completed', color: RS.ink700, background: RS.sunken),
@@ -290,11 +292,16 @@ class _TripView extends StatelessWidget {
             _ => null,
           };
     final traffic = eta == null ? null : liveEta?.traffic;
+    // Family can follow the car live from the moment the seat is accepted.
+    final canShareLive = const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(b.status);
 
     return MapSheetScaffold(
       initialSize: live ? 0.42 : 0.55,
       minSize: 0.28,
-      topActions: [if (live && detail.isRider) _SosButton(detail: detail, car: carPoint)],
+      topActions: [
+        if (live && detail.isRider) _SosButton(detail: detail, car: carPoint),
+        if (live) FloatingMapButton(icon: Icons.share_location_rounded, onTap: () => showShareTripSheet(context, b.id)),
+      ],
       map: (pad) => RideMap(
         padding: pad,
         // The road ahead with live traffic colours when available, else the planned route.
@@ -362,6 +369,7 @@ class _TripView extends StatelessWidget {
       ]),
       children: [
         if (live && carPoint == null && detail.isRider) ...[const SizedBox(height: 12), const Notice('Waiting for the driver’s location… it appears once their app shares GPS.')],
+        if (detail.isRider && detail.ridePin != null) ...[const SizedBox(height: 14), FadeSlideIn(child: RidePinCard(pin: detail.ridePin!))],
         if (detail.isRider && const ['confirmed', 'driver_arriving', 'driver_arrived'].contains(b.status)) ...[
           const SizedBox(height: 14),
           Panel(
@@ -416,6 +424,10 @@ class _TripView extends StatelessWidget {
         const SizedBox(height: 16),
         ..._actions(context, detail),
         const SizedBox(height: 8),
+        if (canShareLive) ...[
+          OutlinedButton.icon(onPressed: () => showShareTripSheet(context, b.id), icon: const Icon(Icons.share_location_rounded, size: 18), label: const Text('Share trip')),
+          const SizedBox(height: 4),
+        ],
         TextButton.icon(onPressed: () => shareRide(context, ride, detail.driver.name), icon: const Icon(Icons.ios_share_rounded, size: 18), label: const Text('Share trip details')),
       ],
     );
@@ -505,7 +517,15 @@ class _SosButton extends StatelessWidget {
                   ListTile(leading: const Icon(Icons.sms_outlined), title: const Text('Text my emergency contacts'), subtitle: const Text('Sends your ride details and live location'), onTap: () => openUrl(context, 'sms:$contacts?body=$body'))
                 else
                   const ListTile(leading: Icon(Icons.info_outline), title: Text('Add emergency contacts in Profile → Safety')),
-                ListTile(leading: const Icon(Icons.ios_share_rounded), title: const Text('Share my trip'), onTap: () => shareRide(context, detail.ride, detail.driver.name)),
+                ListTile(
+                  leading: const Icon(Icons.share_location_rounded),
+                  title: const Text('Share my live trip'),
+                  subtitle: const Text('Family can follow the car on a link'),
+                  onTap: () {
+                    Navigator.pop(sheet);
+                    showShareTripSheet(context, detail.booking.id);
+                  },
+                ),
                 const SizedBox(height: 8),
               ]),
             );
