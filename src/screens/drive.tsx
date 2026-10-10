@@ -10,6 +10,7 @@ import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
 import { etaBubble, useTripEta } from '@/components/TripTime'
+import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, VerifiedBadge } from '@/components/ui'
@@ -35,7 +36,7 @@ export function OfferRide() {
   const { user } = useMe()
   const u = user!
   const nav = useNavigate()
-  const toast = useToast()
+  const celebrate = useCelebrate()
   const loc = useLocation()
   const desktop = useIsDesktop()
   const padding = useMapPadding(0.62)
@@ -104,7 +105,7 @@ export function OfferRide() {
         preferences: prefs,
         note: note.trim() || undefined,
       })
-      toast({ tone: 'success', message: 'Ride published — VIT students can book it now' })
+      celebrate({ kind: 'published', title: 'Ride offered successfully', body: 'VIT students heading your way can see it and request a seat now. We’ll notify you the moment someone does.' })
       nav(`/drive/${ride.id}`, { replace: true })
     } catch (e) {
       if (e instanceof ApiError) setErrors(e.field === 'time' ? { time: e.message } : e.field === 'drop' ? { drop: e.message } : { form: e.message })
@@ -326,6 +327,7 @@ export function DriverRide() {
   const { user } = useMe()
   const nav = useNavigate()
   const toast = useToast()
+  const celebrate = useCelebrate()
   const desktop = useIsDesktop()
   const padding = useMapPadding(0.5)
   const [busy, setBusy] = useState<string | null>(null)
@@ -365,11 +367,12 @@ export function DriverRide() {
   const statusBadge =
     ride.status === 'scheduled' ? <Badge tone="verified">Active Ride</Badge> : ride.status === 'in_progress' ? <Badge tone="success">Live</Badge> : ride.status === 'completed' ? <Badge>Completed</Badge> : <Badge tone="error">Cancelled</Badge>
 
-  async function act(id: string, fn: () => Promise<unknown>, ok?: string) {
+  async function act(id: string, fn: () => Promise<unknown>, ok?: string, after?: () => void) {
     setBusy(id)
     try {
       await fn()
       if (ok) toast({ tone: 'success', message: ok })
+      after?.()
     } catch (e) {
       toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Something went wrong' })
     } finally {
@@ -380,14 +383,17 @@ export function DriverRide() {
   async function runConfirm() {
     setBusy('confirm')
     try {
-      if (confirm === 'start') await rides.start(ride!.id)
+      if (confirm === 'start') {
+        await rides.start(ride!.id)
+        celebrate({ kind: 'started', title: 'Ride started', body: 'Your riders can see you on the map now. Drive safe!' })
+      }
       if (confirm === 'complete') {
         await rides.complete(ride!.id)
-        toast({ tone: 'success', message: 'Ride completed. Thanks for driving the VIT community!' })
+        celebrate({ kind: 'completed', title: 'Ride completed', body: 'Thanks for driving the VIT community!' })
       }
       if (confirm === 'cancel') {
         await rides.cancel(ride!.id, 'Driver’s plans changed')
-        toast({ tone: 'info', message: 'Ride cancelled. Riders have been notified.' })
+        celebrate({ kind: 'cancelled', title: 'Ride cancelled', body: 'Your riders have been notified and any online payments are refunded.' })
       }
       setConfirm(null)
     } catch (e) {
@@ -503,7 +509,11 @@ export function DriverRide() {
                     booking={b}
                     busy={busy === b.id}
                     full={ride.seatsTotal - ride.seatsBooked < b.seats}
-                    onAccept={() => act(b.id, () => bookings.respond(b.id, true), `${firstName(b.rider.name)} added to your ride`)}
+                    onAccept={() =>
+                      act(b.id, () => bookings.respond(b.id, true), undefined, () =>
+                        celebrate({ kind: 'accepted', title: 'Ride accepted', body: `${firstName(b.rider.name)} is riding with you. They’ll confirm their seat and pay next.` }),
+                      )
+                    }
                     onDecline={() => act(b.id, () => bookings.respond(b.id, false))}
                   />
                 </motion.div>

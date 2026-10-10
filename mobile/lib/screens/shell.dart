@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import '../widgets/motion.dart';
 import 'find.dart';
 import 'home.dart';
 import 'inbox.dart';
@@ -46,6 +47,23 @@ class _HomeShellState extends State<HomeShell> {
 
   void _showBanner(AppNotification n) {
     if (!mounted) return;
+    // Big moments for the replies people wait for; a banner for everything else.
+    final moment = switch (n.kind) {
+      'accepted' => (Moment.accepted, 'Ride accepted!', 'Confirm your seat'),
+      'request' => (Moment.sent, 'New ride request', 'View request'),
+      'rejected' => (Moment.declined, 'Request declined', 'Find another ride'),
+      'cancelled' => (Moment.cancelled, n.title, 'View details'),
+      _ => null,
+    };
+    if (moment != null) {
+      final link = n.link;
+      showMoment(context, moment.$1, moment.$2,
+          subtitle: n.kind == 'cancelled' ? n.body : '${n.title}. ${n.body}',
+          actionLabel: link == null && n.kind != 'rejected' ? null : moment.$3,
+          onAction: () => n.kind == 'rejected' || link == null ? goTo(1) : openLink(context, link));
+      _loadBadges();
+      return;
+    }
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(

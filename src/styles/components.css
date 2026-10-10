@@ -1257,3 +1257,36 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
 .pinpick__tag { background: var(--ink-900, #15182e); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 8px; margin-bottom: 2px; white-space: nowrap; }
 .pinpick__locate { position: absolute; right: 12px; bottom: 12px; z-index: 500; }
 @media (prefers-reduced-motion: reduce) { .pinpick__pin { transition: none; } }
+
+/* ---- Action moments (ride offered, request sent, accepted…) ------------- */
+.celebrate {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: var(--scrim);
+}
+.celebrate__card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.celebrate__art { width: 200px; height: 140px; margin-bottom: var(--space-3); overflow: visible; }
+.celebrate__title { margin: 0; }
+.celebrate__body { margin: var(--space-2) 0 0; max-width: 300px; }
+.celebrate__dots { display: inline-flex; gap: 6px; margin-top: var(--space-3); }
+.celebrate__dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--primary-500); display: block; }
+.celebrate__actions { width: 100%; display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-5); }
+@media (max-width: 767.98px) {
+  .celebrate { align-items: end; padding: 0; }
+  .celebrate__card { max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: calc(var(--space-5) + var(--safe-bottom)); }
+}

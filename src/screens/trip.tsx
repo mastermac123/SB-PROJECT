@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/Sheet'
 import { NetworkError, StateView } from '@/components/States'
 import { Stops } from '@/components/Stops'
 import { TopBar } from '@/components/TopBar'
+import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { Avatar, Badge, Button, Chip, Notice, Plate, Rating, RideCardSkeleton, VerifiedBadge } from '@/components/ui'
 import { dayTime, firstName, money, plural, time } from '@/lib/format'
@@ -97,6 +98,7 @@ export function TripStatus() {
   const { bookingId } = useParams()
   const nav = useNavigate()
   const toast = useToast()
+  const celebrate = useCelebrate()
   const search = useSearch()
   const q = useQuery<BookingDetail>(bookingId ? Q.booking(bookingId) : null)
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -130,7 +132,7 @@ export function TripStatus() {
     try {
       await bookings.cancel(booking.id, booking.status === 'pending' ? 'Request withdrawn' : reason)
       setCancelOpen(false)
-      toast({ tone: 'success', message: booking.status === 'pending' ? 'Request withdrawn' : 'Seat cancelled' })
+      celebrate({ kind: 'cancelled', title: booking.status === 'pending' ? 'Request withdrawn' : 'Seat cancelled', body: booking.paymentStatus === 'paid_online' ? 'Your online payment will be refunded automatically.' : 'The driver has been notified.' })
     } catch (e) {
       toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Couldn’t cancel' })
     } finally {

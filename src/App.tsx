@@ -1,5 +1,6 @@
 import { MotionConfig } from 'framer-motion'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { CelebrateProvider } from './components/Celebrate'
 import { ToastProvider } from './components/Toast'
 import { AppShell } from './layouts/AppShell'
 import { Landing, Login, Splash } from './screens/auth'
@@ -22,6 +23,7 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <ToastProvider>
+        <CelebrateProvider>
         <SearchProvider>
           <BrowserRouter>
             <Routes>
@@ -61,6 +63,7 @@ export function App() {
             </Routes>
           </BrowserRouter>
         </SearchProvider>
+        </CelebrateProvider>
       </ToastProvider>
     </MotionConfig>
   )

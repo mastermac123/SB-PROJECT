@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { BottomNav, TopNav } from '@/components/Nav'
+import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { Button, cx } from '@/components/ui'
 import { useOnline } from '@/hooks'
@@ -70,11 +71,18 @@ export function AppShell({ nav }: { nav: boolean }) {
 /** New notifications from the server → toast (and a system notification when the tab is hidden). */
 function useNotificationToasts() {
   const toast = useToast()
+  const celebrate = useCelebrate()
   const nav = useNavigate()
   const loc = useLocation()
   useEffect(
     () =>
       onNotification((n) => {
+        // The other person acted on your ride: show it as a moment, not just a toast.
+        const go = n.link ? { onClick: () => nav(n.link!) } : null
+        if (n.kind === 'accepted') return celebrate({ kind: 'accepted', title: 'Ride accepted!', body: `${n.title}. ${n.body}`, action: go ? { label: 'Confirm your seat', ...go } : undefined })
+        if (n.kind === 'request') return celebrate({ kind: 'sent', title: 'New ride request', body: n.title, action: go ? { label: 'View request', ...go } : undefined })
+        if (n.kind === 'rejected') return celebrate({ kind: 'declined', title: 'Request declined', body: `${n.title}. ${n.body}`, action: { label: 'Find another ride', onClick: () => nav('/find') } })
+        if (n.kind === 'cancelled') return celebrate({ kind: 'cancelled', title: n.title, body: n.body, action: go ? { label: 'View details', ...go } : undefined })
         if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             const sys = new Notification(n.title, { body: n.body, icon: '/apple-touch-icon.png', tag: n.id })
@@ -89,11 +97,11 @@ function useNotificationToasts() {
         if (n.link && window.location.pathname === n.link) return
         if (n.kind === 'chat' && window.location.pathname.startsWith('/chat/')) return
         toast({
-          tone: n.kind === 'rejected' || n.kind === 'cancelled' ? 'error' : n.kind === 'accepted' || n.kind === 'payment' ? 'success' : 'info',
+          tone: n.kind === 'payment' ? 'success' : 'info',
           message: n.title,
           action: n.link ? { label: 'View', onClick: () => nav(n.link!) } : undefined,
         })
       }),
-    [toast, nav, loc.pathname],
+    [toast, celebrate, nav, loc.pathname],
   )
 }

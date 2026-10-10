@@ -84,7 +84,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
       });
       if (!mounted) return;
-      await showSuccess(context, 'Ride published', subtitle: 'Students going your way can see it and book now.');
+      await showMoment(context, Moment.published, 'Ride offered successfully', subtitle: 'Students going your way can see it and book now.');
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: ride.id)));
     } catch (e) {
       if (mounted) setState(() => (_error = errorText(e), _publishing = false));
@@ -330,9 +330,9 @@ class _DriveScreenState extends State<DriveScreen> {
                     if (r.booking.message != null) ...[const SizedBox(height: 8), Text('“${r.booking.message}”', style: const TextStyle(fontStyle: FontStyle.italic, color: RS.ink700))],
                     const SizedBox(height: 12),
                     Row(children: [
-                      Expanded(child: OutlinedButton(onPressed: () => attempt(context, () => api.respond(r.booking.id, false), success: 'Request declined'), child: const Text('Decline'))),
+                      Expanded(child: OutlinedButton(onPressed: () => _act(context, () => api.respond(r.booking.id, false), Moment.declined, 'Request declined', '${r.rider.firstName} has been told. Your seat is open again.'), child: const Text('Decline'))),
                       const SizedBox(width: 10),
-                      Expanded(child: FilledButton(onPressed: () => attempt(context, () => api.respond(r.booking.id, true), success: 'Accepted — ${r.rider.firstName} has been notified'), child: const Text('Accept'))),
+                      Expanded(child: FilledButton(onPressed: () => _act(context, () => api.respond(r.booking.id, true), Moment.accepted, 'Ride accepted', '${r.rider.firstName} has been notified and can now confirm the seat.'), child: const Text('Accept'))),
                     ]),
                   ]),
                 ),
@@ -346,7 +346,7 @@ class _DriveScreenState extends State<DriveScreen> {
             LoadingButton(
               label: 'Start ride',
               icon: Icons.play_arrow_rounded,
-              onPressed: riders.isEmpty ? null : () => attempt(context, () => api.startRide(ride.id), success: 'Ride started — riders can track you live'),
+              onPressed: riders.isEmpty ? null : () => _act(context, () => api.startRide(ride.id), Moment.started, 'Ride started', 'Riders can now track you live. Drive safe!'),
             ),
             const SizedBox(height: 10),
             LoadingButton(
@@ -362,7 +362,7 @@ class _DriveScreenState extends State<DriveScreen> {
                     actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')), TextButton(onPressed: () => Navigator.pop(c, true), style: TextButton.styleFrom(foregroundColor: RS.danger), child: const Text('Cancel ride'))],
                   ),
                 );
-                if (ok == true && context.mounted) await attempt(context, () => api.cancelRide(ride.id), success: 'Ride cancelled');
+                if (ok == true && context.mounted) await _act(context, () => api.cancelRide(ride.id), Moment.cancelled, 'Ride cancelled', 'All riders have been notified and online payments refunded.');
               },
             ),
           ],
@@ -370,10 +370,10 @@ class _DriveScreenState extends State<DriveScreen> {
             LoadingButton(
               label: 'Complete ride',
               icon: Icons.flag_rounded,
-              onPressed: () => attempt(context, () async {
+              onPressed: () => _act(context, () async {
                 await api.completeRide(ride.id);
                 _stopSharing();
-              }, success: 'Ride complete — thanks for driving!'),
+              }, Moment.completed, 'Ride completed', 'Thanks for driving! Fares show up under Earnings.'),
             ),
       ],
     );
@@ -428,4 +428,9 @@ class _RiderPanel extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// Runs a driver action, then shows its animated moment.
+Future<void> _act(BuildContext context, Future<void> Function() action, Moment kind, String title, String subtitle) async {
+  if (await attempt(context, action) && context.mounted) await showMoment(context, kind, title, subtitle: subtitle);
 }

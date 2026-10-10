@@ -7,6 +7,7 @@ import { MapView } from '@/components/MapView'
 import { StateView } from '@/components/States'
 import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
+import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { Avatar, Badge, Button, IconButton, Notice, Plate, Rating, Seats, VerifiedBadge } from '@/components/ui'
 import { useIsDesktop } from '@/hooks'
@@ -39,6 +40,7 @@ export function RideDetails() {
   const u = user!
   const nav = useNavigate()
   const toast = useToast()
+  const celebrate = useCelebrate()
   const search = useSearch()
   const desktop = useIsDesktop()
   const padding = useMapPadding(0.55)
@@ -106,6 +108,7 @@ export function RideDetails() {
     setError(null)
     try {
       const b = await bookings.request(ride!.id, query, note)
+      celebrate({ kind: 'sent', title: 'Ride requested successfully', body: `Waiting for ${firstName(driver.name)} to accept. We’ll let you know the moment they reply.` })
       nav(`/trip/${b.id}`, { replace: false })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Couldn’t send your request.')

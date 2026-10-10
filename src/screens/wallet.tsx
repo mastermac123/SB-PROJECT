@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { NetworkError, StateView } from '@/components/States'
 import { ModalSheet } from '@/components/Sheet'
-import { useToast } from '@/components/Toast'
+import { useCelebrate } from '@/components/Celebrate'
 import { Badge, Button, Chip, Field, Notice, RideCardSkeleton } from '@/components/ui'
 import { openCheckout } from '@/lib/razorpay'
 import { money, relative } from '@/lib/format'
@@ -156,7 +156,7 @@ export function Wallet() {
 const AMOUNTS = [100, 200, 500, 1000]
 
 function AddMoney({ open, testMode, onClose, onDone }: { open: boolean; testMode: boolean; onClose: () => void; onDone: () => void }) {
-  const toast = useToast()
+  const celebrate = useCelebrate()
   const [amount, setAmount] = useState('200')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -169,7 +169,7 @@ function AddMoney({ open, testMode, onClose, onDone }: { open: boolean; testMode
       const r = await openCheckout(await wallet.topUpOrder(n))
       if (!r) return
       const res = await wallet.verifyTopUp(r)
-      toast({ tone: 'success', message: `${money(n)} added · balance ${money(res.balance)}` })
+      celebrate({ kind: 'confirmed', title: `${money(n)} added`, body: `Your RideSync Wallet balance is now ${money(res.balance)}.` })
       onDone()
       onClose()
     } catch (e) {

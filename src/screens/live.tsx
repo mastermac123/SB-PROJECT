@@ -6,6 +6,7 @@ import { MapView, type MapMarker } from '@/components/MapView'
 import { ModalSheet } from '@/components/Sheet'
 import { Stops } from '@/components/Stops'
 import { BackButton } from '@/components/TopBar'
+import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { Avatar, Button, Chip, IconButton, ListRow, Plate, Rating, RideCardSkeleton, cx } from '@/components/ui'
 import { useIsDesktop, useNow } from '@/hooks'
@@ -249,6 +250,7 @@ export function LiveRide() {
 function RateTrip({ detail }: { detail: BookingDetail }) {
   const nav = useNavigate()
   const toast = useToast()
+  const celebrate = useCelebrate()
   const { booking, driver } = detail
   const [stars, setStars] = useState(booking.riderRating ?? 0)
   const [tags, setTags] = useState<string[]>([])
@@ -260,7 +262,7 @@ function RateTrip({ detail }: { detail: BookingDetail }) {
     setSaving(true)
     try {
       await bookings.rate(booking.id, stars, tags, comment)
-      toast({ tone: 'success', message: 'Thanks for rating your trip' })
+      celebrate({ kind: 'completed', title: 'Thanks for rating!', body: 'Ratings keep RideSync safe and friendly for every VIT student.' })
       nav('/home', { replace: true })
     } catch (e) {
       toast({ tone: 'error', message: e instanceof ApiError ? e.message : 'Couldn’t save rating' })

@@ -88,7 +88,7 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
     try {
       final b = await api.requestSeat(ride.id, _queryFor(ride), note.text.trim());
       if (!mounted) return;
-      await showSuccess(context, 'Request sent', subtitle: 'We’ll let you know as soon as ${driver.firstName} accepts.');
+      await showMoment(context, Moment.sent, 'Ride requested successfully', subtitle: 'Waiting for ${driver.firstName} to accept…');
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => TripScreen(bookingId: b.id)));
     } catch (e) {
       if (mounted) {
@@ -473,7 +473,7 @@ class _TripView extends StatelessWidget {
         ],
       ),
     );
-    if (ok == true && context.mounted) await attempt(context, action, success: 'Booking cancelled');
+    if (ok == true && context.mounted && await attempt(context, action) && context.mounted) await showMoment(context, Moment.cancelled, 'Booking cancelled', subtitle: 'The driver has been told. Online payments are refunded.');
   }
 }
 
