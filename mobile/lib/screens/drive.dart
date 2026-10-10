@@ -432,6 +432,16 @@ class _RiderPanel extends StatelessWidget {
             label: const Text('Message'),
           ),
           if (r.riderPhone != null) OutlinedButton.icon(onPressed: () => openUrl(context, 'tel:+91${r.riderPhone}'), icon: const Icon(Icons.call_outlined, size: 18), label: const Text('Call')),
+          // Turn-by-turn directions in Google Maps: to the pickup until the rider is in the car, then to their drop.
+          if (const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(b.status))
+            FilledButton.tonalIcon(
+              onPressed: () {
+                final to = b.status == 'in_progress' ? b.drop : b.pickup;
+                openUrl(context, 'https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}&travelmode=driving');
+              },
+              icon: const Icon(Icons.navigation_outlined, size: 18),
+              label: Text(b.status == 'in_progress' ? 'Navigate to drop' : 'Navigate to pickup'),
+            ),
           if ((b.paymentStatus == 'marked_paid' || (b.paymentMethod == 'cash' && b.paymentStatus == 'unpaid')) && b.status != 'cancelled')
             OutlinedButton.icon(
               onPressed: () => attempt(context, () => api.paymentReceived(b.id), success: 'Marked as received'),

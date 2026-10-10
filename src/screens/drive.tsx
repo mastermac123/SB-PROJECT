@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
+import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, Navigation, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MatchScore } from '@/components/MatchScore'
@@ -627,6 +627,9 @@ export function DriverRide() {
   )
 }
 
+/** Turn-by-turn directions in Google Maps (opens the Maps app on phones). */
+const directionsUrl = (to: { lat: number; lng: number }) => `https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}&travelmode=driving`
+
 function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderBooking; live: boolean; done: boolean; busy: boolean; onStep: (fn: () => Promise<unknown>, ok?: string) => void; onChat: () => void; onRemove: () => void }) {
   const name = firstName(b.rider.name)
   const celebrate = useCelebrate()
@@ -679,6 +682,20 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
           <Button size="sm" variant="secondary" icon={<MessageCircle />} onClick={onChat}>
             Chat
           </Button>
+          {['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(b.status) && (
+            <a
+              className="btn btn--secondary btn--sm"
+              href={directionsUrl(b.status === 'in_progress' ? b.drop : b.pickup)}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={b.status === 'in_progress' ? `Navigate to ${name}’s drop` : `Navigate to ${name}’s pickup`}
+            >
+              <span className="btn__label">
+                <Navigation />
+                Navigate
+              </span>
+            </a>
+          )}
           <span className="grow" />
           {live && b.status === 'driver_arriving' && (
             <Button size="sm" loading={busy} onClick={() => onStep(() => bookings.arrived(b.id))}>
