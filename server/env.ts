@@ -80,9 +80,9 @@ export const env = {
   },
   /** Optional: Razorpay payment gateway (test keys start with rzp_test_). */
   razorpay: {
-    keyId: process.env.RAZORPAY_KEY_ID || '',
-    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
-    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    keyId: (process.env.RAZORPAY_KEY_ID || '').trim(),
+    keySecret: (process.env.RAZORPAY_KEY_SECRET || '').trim(),
+    webhookSecret: (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim(),
   },
   /** Local development only: sign in without Google/email. Refused in production. */
   devLogin: bool(process.env.DEV_LOGIN) && process.env.NODE_ENV !== 'production',

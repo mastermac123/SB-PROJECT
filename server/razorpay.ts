@@ -49,3 +49,14 @@ export function verifyWebhookSignature(rawBody: Buffer, signature: string) {
   const expected = createHmac('sha256', env.razorpay.webhookSecret).update(rawBody).digest('hex')
   return safeEqual(expected, signature)
 }
+
+/** Startup check: do the saved keys work? 'ok' | 'rejected' | 'offline' | 'none'. */
+export async function checkRazorpay(): Promise<'ok' | 'rejected' | 'offline' | 'none'> {
+  if (!env.razorpay.keyId || !env.razorpay.keySecret) return 'none'
+  try {
+    const res = await fetch(`${API}/orders?count=1`, { headers: { Authorization: auth() }, signal: AbortSignal.timeout(8000) })
+    return res.ok ? 'ok' : res.status === 401 ? 'rejected' : 'offline'
+  } catch {
+    return 'offline'
+  }
+}

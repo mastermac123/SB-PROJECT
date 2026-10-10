@@ -4,6 +4,7 @@ import { checkMapTiler } from './maps'
 import { checkTomTom } from './traffic'
 import { checkMappls } from './mappls'
 import { razorpayConfigured } from './env'
+import { checkRazorpay } from './razorpay'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
 const app = createApp()
@@ -19,7 +20,12 @@ const server = app.listen(env.port, () => {
     if (envFile.found) console.log(`[ridesync] ⚠ Email is off because .env is missing: ${missing.join(', ')}. Run setup.bat, answer y to the email question and enter the Gmail App Password.`)
   }
   if (anyMailConfigured()) void verifyMail()
-  console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] Razorpay not set — riders pay by UPI to the driver or cash')
+  console.log(razorpayConfigured() ? `[ridesync] Razorpay ${env.razorpay.keyId.startsWith('rzp_test_') ? 'TEST' : 'LIVE'} mode enabled` : '[ridesync] ⚠ Razorpay not set — Wallet "Add money" and online payment are off. Run setup.bat, answer y to Razorpay and paste your Key Id + Key Secret.')
+  void checkRazorpay().then((r) => {
+    if (r === 'ok') console.log('[ridesync] Razorpay keys work ✓ (Wallet and online payment ready)')
+    if (r === 'rejected') console.log('[ridesync] ⚠ Razorpay rejected the keys in .env — Wallet "Add money" will fail. In dashboard.razorpay.com (Test mode) → Account & Settings → API Keys → Regenerate, then run setup.bat.')
+    if (r === 'offline') console.log('[ridesync] ⚠ Couldn’t reach Razorpay to check the keys (internet?).')
+  })
   void checkMapTiler().then((r) => {
     if (r === 'rejected') console.log('[ridesync] ⚠ MapTiler rejected the key in .env (MAPTILER_KEY) — using the free OpenStreetMap map instead. Copy the key again from cloud.maptiler.com → API keys and run setup.bat.')
     if (r === 'ok') console.log('[ridesync] MapTiler key works ✓')
