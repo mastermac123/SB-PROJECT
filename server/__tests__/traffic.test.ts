@@ -2,7 +2,6 @@ import request from 'supertest'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
-process.env.CITY_SPEED_FLOOR = 'off'
 process.env.DEV_LOGIN = 'true'
 process.env.TOMTOM_KEY = 'tt_test'
 process.env.OSRM_URL = 'http://127.0.0.1:9'

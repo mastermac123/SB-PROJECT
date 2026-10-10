@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 process.env.DATABASE_PATH = ':memory:'
 process.env.TOMTOM_KEY = 'tt_test'
 process.env.OLA_MAPS_KEY = 'ola_test'
+process.env.CITY_SPEED_FLOOR = 'on'
 
 const realFetch = globalThis.fetch
 afterEach(() => {

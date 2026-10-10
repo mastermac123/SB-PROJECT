@@ -2,7 +2,6 @@ import request from 'supertest'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
-process.env.CITY_SPEED_FLOOR = 'off'
 process.env.DEV_LOGIN = 'true'
 process.env.OSRM_URL = 'http://127.0.0.1:9'
 process.env.GOOGLE_MAPS_API_KEY = 'AIza-test-key'
@@ -34,7 +33,7 @@ function mockGoogle() {
         status: 'OK',
         results: [{ formatted_address: 'Antop Hill, Wadala, Mumbai', address_components: [{ long_name: 'Antop Hill Road', short_name: 'x', types: ['route'] }, { long_name: 'Wadala', short_name: 'x', types: ['sublocality_level_1', 'sublocality'] }, { long_name: 'Mumbai', short_name: 'x', types: ['locality'] }] }],
       })
-    if (url.includes('computeRoutes')) return Response.json({ routes: [{ distanceMeters: 12_400, duration: '1860s', polyline: { encodedPolyline: '_p~iF~ps|U_ulLnnqC_mqNvxq`@' } }] })
+    if (url.includes('computeRoutes')) return Response.json({ routes: [{ distanceMeters: 12_400, duration: '1860s', staticDuration: '1200s', polyline: { encodedPolyline: '_p~iF~ps|U_ulLnnqC_mqNvxq`@' }, travelAdvisory: { speedReadingIntervals: [{ startPolylinePointIndex: 0, endPolylinePointIndex: 1, speed: 'NORMAL' }, { startPolylinePointIndex: 1, endPolylinePointIndex: 2, speed: 'TRAFFIC_JAM' }] } }] })
     return new Response('{}', { status: 404 })
   }) as typeof fetch
 }
@@ -109,8 +108,10 @@ describe('Google Maps', () => {
       .set(H)
       .send({ from: { id: 'a', name: 'A', area: '', lat: 19.0, lng: 72.8 }, to: { id: 'b', name: 'B', area: '', lat: 19.1, lng: 72.9 } })
     expect(res.status).toBe(200)
-    expect(res.body).toMatchObject({ source: 'google', distanceKm: 12.4, durationMin: 31 })
+    expect(res.body).toMatchObject({ source: 'google', distanceKm: 12.4, durationMin: 31, trafficDelayMin: 11, traffic: 'heavy', segments: [{ from: 1, to: 2, level: 'heavy' }] })
     expect(calls[0].headers['X-Goog-FieldMask']).toContain('routes.polyline.encodedPolyline')
+    // Live traffic, not the empty-road time.
+    expect(calls[0].body).toMatchObject({ routingPreference: 'TRAFFIC_AWARE_OPTIMAL', extraComputations: ['TRAFFIC_ON_POLYLINE'] })
   })
 
   it('falls back to an estimate when Google is down', async () => {

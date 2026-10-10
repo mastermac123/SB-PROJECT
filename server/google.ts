@@ -137,17 +137,23 @@ export function decodePolyline(encoded: string): LatLng[] {
   return out
 }
 
-export async function googleRoute(a: LatLng, b: LatLng): Promise<{ coords: LatLng[]; distanceKm: number; durationMin: number }> {
-  const data = await call<{ routes?: { distanceMeters?: number; duration?: string; polyline?: { encodedPolyline?: string } }[] }>(
+/**
+ * Google route with live traffic: the time includes current traffic, and the slow / jammed
+ * stretches come back as index ranges on the polyline (Google's own traffic colours).
+ */
+export async function googleRoute(a: LatLng, b: LatLng): Promise<{ coords: LatLng[]; distanceKm: number; durationMin: number; freeFlowMin: number; segments: { from: number; to: number; level: 'slow' | 'heavy' | 'severe' }[] }> {
+  type Interval = { startPolylinePointIndex?: number; endPolylinePointIndex?: number; speed?: 'NORMAL' | 'SLOW' | 'TRAFFIC_JAM' }
+  const data = await call<{ routes?: { distanceMeters?: number; duration?: string; staticDuration?: string; polyline?: { encodedPolyline?: string }; travelAdvisory?: { speedReadingIntervals?: Interval[] } }[] }>(
     'https://routes.googleapis.com/directions/v2:computeRoutes',
     {
       method: 'POST',
-      fieldMask: 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+      fieldMask: 'routes.distanceMeters,routes.duration,routes.staticDuration,routes.polyline.encodedPolyline,routes.travelAdvisory.speedReadingIntervals',
       body: {
         origin: { location: { latLng: { latitude: a.lat, longitude: a.lng } } },
         destination: { location: { latLng: { latitude: b.lat, longitude: b.lng } } },
         travelMode: 'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
+        routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
+        extraComputations: ['TRAFFIC_ON_POLYLINE'],
         languageCode: 'en',
         units: 'METRIC',
       },
@@ -155,9 +161,15 @@ export async function googleRoute(a: LatLng, b: LatLng): Promise<{ coords: LatLn
   )
   const r = data.routes?.[0]
   if (!r?.polyline?.encodedPolyline || r.distanceMeters == null) throw new Error('google: no route')
+  const durationMin = Math.round(parseFloat(r.duration ?? '0') / 60)
   return {
     coords: decodePolyline(r.polyline.encodedPolyline),
     distanceKm: r.distanceMeters / 1000,
-    durationMin: Math.round(parseFloat(r.duration ?? '0') / 60),
+    durationMin,
+    freeFlowMin: r.staticDuration ? Math.round(parseFloat(r.staticDuration) / 60) : durationMin,
+    segments: (r.travelAdvisory?.speedReadingIntervals ?? [])
+      .filter((i) => i.speed === 'SLOW' || i.speed === 'TRAFFIC_JAM')
+      .map((i) => ({ from: i.startPolylinePointIndex ?? 0, to: i.endPolylinePointIndex ?? 0, level: i.speed === 'TRAFFIC_JAM' ? ('heavy' as const) : ('slow' as const) }))
+      .filter((x) => x.to > x.from),
   }
 }

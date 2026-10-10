@@ -69,12 +69,11 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
 }
 
 /**
- * Slowest realistic city speed for the hour (Mumbai), so we never promise a trip faster than
- * traffic allows even when a map service has no live data for that road.
- * Set CITY_SPEED_FLOOR=off to disable.
+ * Optional typical-city-speed minimum (Mumbai) for the hour. Off by default so trip times come
+ * only from real traffic data; set CITY_SPEED_FLOOR=on in .env to use it.
  */
 export function cityFloorMin(distanceKm: number, when = new Date()): number {
-  if (process.env.CITY_SPEED_FLOOR === 'off') return 0
+  if (process.env.CITY_SPEED_FLOOR !== 'on') return 0
   const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(when))
   const kmh = (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 15 : h >= 11 && h < 17 ? 20 : h >= 21 && h < 23 ? 26 : 34
   return Math.round((distanceKm / kmh) * 60 + 1)
@@ -82,7 +81,7 @@ export function cityFloorMin(distanceKm: number, when = new Date()): number {
 
 const olaCache = new Map<string, { at: number; min: number | null }>()
 
-/** Take the slowest of the map service, Ola Maps (Indian traffic) and the city-speed floor. */
+/** Take the slower of the live-traffic sources: the route service (Google or TomTom) and Ola Maps. */
 async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): Promise<Route> {
   const when = departAt && departAt.getTime() > Date.now() ? departAt : new Date()
   let olaMin: number | null = null
@@ -124,19 +123,24 @@ async function baseRoute(a: LatLng, b: LatLng, opts: { departAt?: Date } = {}): 
       console.error('[ridesync] TomTom traffic route failed, falling back', (e as Error).message)
     }
   }
-  const hit = cache.get(k)
-  if (hit) return hit
   if (googleConfigured()) {
+    // Google's live traffic changes by the minute: reuse for 2 minutes only.
+    const gk = `g|${k}`
+    const live = liveCache.get(gk)
+    if (live && Date.now() - live.at < 120_000) return live.route
     try {
       const r = await googleRoute(a, b)
-      const route: Route = { ...r, coords: simplify(r.coords), source: 'google' }
-      if (cache.size > 500) cache.clear()
-      cache.set(k, route)
+      const delay = Math.max(0, r.durationMin - r.freeFlowMin)
+      const route: Route = { ...simplifyWithSegments(r.coords, r.segments), distanceKm: r.distanceKm, durationMin: r.durationMin, trafficDelayMin: delay, traffic: trafficLevel(delay, r.freeFlowMin), source: 'google' }
+      if (liveCache.size > 500) liveCache.clear()
+      liveCache.set(gk, { at: Date.now(), route })
       return route
     } catch (e) {
       console.error('[ridesync] Google routes failed, falling back', (e as Error).message)
     }
   }
+  const hit = cache.get(k)
+  if (hit) return hit
   if (env.orsKey) {
     try {
       const route = await orsRoute(a, b)
