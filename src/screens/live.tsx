@@ -16,6 +16,7 @@ import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
 import { RidePinCard, useShareTrip } from '@/components/Safety'
+import { RiderLiveBar, useShareRiderLocation } from '@/components/RiderLive'
 import { paymentLabel, SuccessMark } from './trip'
 
 // Configure per campus before launch; hidden when not set so we never show an unverified number.
@@ -64,6 +65,7 @@ export function LiveRide() {
   const live = q.data && ['driver_arriving', 'in_progress'].includes(q.data.booking.status) ? (q.data.booking.status === 'in_progress' ? q.data.booking.drop : q.data.booking.pickup) : null
   const etaInfo = useLiveEta(loc ?? null, live)
   const shareTrip = useShareTrip(bookingId ?? '')
+  const shareMe = useShareRiderLocation(bookingId ?? '', !!q.data && q.data.role === 'rider' && ['driver_arriving', 'driver_arrived'].includes(q.data.booking.status))
 
   if (q.loading)
     return (
@@ -158,6 +160,7 @@ export function LiveRide() {
           <div className="progress__bar" style={loc ? { width: `${booking.status === 'driver_arrived' ? 100 : Math.round(progress * 100)}%`, background: booking.status === 'in_progress' ? 'var(--success-500)' : undefined } : undefined} />
         </div>
 
+        <RiderLiveBar driver={firstName(driver.name)} share={shareMe} />
         {d.ridePin && <RidePinCard pin={d.ridePin} plate={v.plate} />}
         <div className="row gap-3">
           <Avatar name={driver.name} src={driver.photo} size="lg" verified={driver.verified} />

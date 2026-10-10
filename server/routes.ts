@@ -10,6 +10,7 @@ import type {
   PaymentRecord,
   Place,
   RideDetail,
+  RiderLocation,
   SearchQuery,
   SharedTrip,
   Thread,
@@ -495,7 +496,11 @@ api.get(
       out.bookings = all(`SELECT * FROM bookings WHERE ride_id = ? ORDER BY created_at`, ride.id).map((b) => {
         const bk = toBooking(b)
         const riderRow = one(`SELECT * FROM users WHERE id = ?`, bk.riderId)
-        return { ...bk, rider: { ...publicUser(riderRow ?? bk.riderId), phone: HOLDING.includes(bk.status) && riderRow ? String(riderRow.phone) : undefined } }
+        return {
+          ...bk,
+          rider: { ...publicUser(riderRow ?? bk.riderId), phone: HOLDING.includes(bk.status) && riderRow ? String(riderRow.phone) : undefined },
+          riderLocation: freshRiderLocation(b),
+        }
       })
     }
     return out
@@ -1105,6 +1110,8 @@ api.post(
     const { b, role } = bookingAccess(param(req, 'id'), meId(req))
     if (role === 'driver' && b.ride_pin) checkPin(b, pin ?? '')
     driverStep(req, ['driver_arriving', 'driver_arrived'], 'in_progress', 'picked_up_at')
+    // Rider is in the car: stop keeping their live location.
+    run(`UPDATE bookings SET rider_location = NULL WHERE id = ?`, b.id)
     // Note what each traffic source predicts now; compared with the real time at drop-off.
     const from = JSON.parse(String(b.pickup)) as Place
     const to = JSON.parse(String(b.drop_place)) as Place
@@ -1585,5 +1592,30 @@ api.get(
       cancels: Number(u.cancels),
       createdAt: String(u.created_at),
     }))
+  }),
+)
+
+/* ---- Live rider location (driver finds the rider, like Uber/Ola) ---------- */
+
+/** Rider shares their phone's live location from confirmation until pickup, only with their driver. */
+const RIDER_SHARING = ['confirmed', 'driver_arriving', 'driver_arrived']
+
+function freshRiderLocation(b: Row): RiderLocation | undefined {
+  if (!RIDER_SHARING.includes(String(b.status)) || !b.rider_location) return undefined
+  const l = JSON.parse(String(b.rider_location)) as RiderLocation
+  return Date.now() - new Date(l.at).getTime() < 10 * 60_000 ? l : undefined
+}
+
+api.post(
+  '/bookings/:id/rider-location',
+  requireOnboarded,
+  h((req) => {
+    const p = parse(z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(10_000).nullable().optional() }), req.body)
+    const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role !== 'rider') throw new HttpError(403, 'Only the rider shares this location.')
+    if (!RIDER_SHARING.includes(String(b.status))) throw new HttpError(409, 'Your live location is only shared until pickup.')
+    const location: RiderLocation = { lat: p.lat, lng: p.lng, accuracy: p.accuracy ?? undefined, at: nowIso() }
+    run(`UPDATE bookings SET rider_location = ? WHERE id = ?`, JSON.stringify(location), b.id)
+    emit([String(r.driver_id)], { type: 'riderLocation', rideId: String(r.id), bookingId: String(b.id), location })
   }),
 )

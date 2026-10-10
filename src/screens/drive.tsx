@@ -17,11 +17,12 @@ import { PinEntrySheet, WomenOnlyTag } from '@/components/Safety'
 import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
-import { dayTime, duration, firstName, money, plural, time } from '@/lib/format'
+import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
+import { haversineKm } from '@/lib/geo'
 import { PREFERENCE_LABEL, suggestFarePerSeat, tierFor } from '@/lib/matching'
-import type { Booking, DriverLocation, RidePreference, RiderInfo } from '@/lib/types'
+import type { Booking, DriverLocation, RidePreference, RiderInfo, RiderLocation } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { ApiError, Q, bookings, rides, routePreview, saveVehicle, useMe, useQuery, type RideDetail, type RouteInfo } from '@/services/api'
+import { ApiError, Q, bookings, rides, routePreview, saveVehicle, useMe, useQuery, useRiderLocations, type RideDetail, type RouteInfo } from '@/services/api'
 import { defaultQuery } from '@/state/search'
 import { PREF_OPTIONS } from './find'
 import { shareLink } from './rideDetails'
@@ -349,6 +350,8 @@ export function DriverRide() {
   const ride = q.data?.ride
   const live = ride?.status === 'in_progress'
   const { pos, error: locError } = useShareLocation(rideId ?? '', !!live && ride?.driverId === user?.id)
+  // Riders waiting for pickup share their phone's live location (Uber/Ola style).
+  const riderLocs = useRiderLocations(rideId, Object.fromEntries((q.data?.bookings ?? []).map((b) => [b.id, b.riderLocation])))
   const eta = useTripEta({
     from: pos ?? ride?.origin ?? CAMPUS,
     to: ride?.destination ?? CAMPUS,
@@ -424,8 +427,13 @@ export function DriverRide() {
     { id: 'd', at: ride.destination, kind: 'drop', label: ride.destination.name, sublabel: upcoming ? `Arrive ~${time(eta.arrive)}` : undefined },
     ...(bubble ? [bubble] : []),
     ...[...pending, ...riders]
-      .filter((b) => b.status !== 'completed' && Math.abs(b.pickup.lat - ride.origin.lat) + Math.abs(b.pickup.lng - ride.origin.lng) > 0.002)
-      .map((b) => ({ id: b.id, at: b.pickup, kind: 'me' as const, label: firstName(b.rider.name) })),
+      .filter((b) => b.status !== 'completed' && b.status !== 'in_progress' && (riderLocs[b.id] || Math.abs(b.pickup.lat - ride.origin.lat) + Math.abs(b.pickup.lng - ride.origin.lng) > 0.002))
+      .map((b) => {
+        const l = riderLocs[b.id]
+        return l
+          ? { id: b.id, at: l, kind: 'me' as const, label: firstName(b.rider.name), sublabel: `Live · ${relative(l.at).toLowerCase()}`, darkLabel: true }
+          : { id: b.id, at: b.pickup, kind: 'me' as const, label: firstName(b.rider.name) }
+      }),
     ...(pos ? [{ id: 'car', at: pos, kind: 'car' as const, heading: pos.heading }] : []),
   ]
 
@@ -559,6 +567,7 @@ export function DriverRide() {
               <RiderRow
                 key={b.id}
                 b={b}
+                liveAt={riderLocs[b.id]}
                 live={!!live}
                 done={ride.status === 'completed'}
                 busy={busy === b.id}
@@ -630,7 +639,7 @@ export function DriverRide() {
 /** Turn-by-turn directions in Google Maps (opens the Maps app on phones). */
 const directionsUrl = (to: { lat: number; lng: number }) => `https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}&travelmode=driving`
 
-function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderBooking; live: boolean; done: boolean; busy: boolean; onStep: (fn: () => Promise<unknown>, ok?: string) => void; onChat: () => void; onRemove: () => void }) {
+function RiderRow({ b, liveAt, live, done, busy, onStep, onChat, onRemove }: { b: RiderBooking; liveAt?: RiderLocation; live: boolean; done: boolean; busy: boolean; onStep: (fn: () => Promise<unknown>, ok?: string) => void; onChat: () => void; onRemove: () => void }) {
   const name = firstName(b.rider.name)
   const celebrate = useCelebrate()
   const [pinOpen, setPinOpen] = useState(false)
@@ -657,6 +666,12 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
           <span className="t-sm t-muted truncate">
             {b.pickup.name} → {b.drop.name}
           </span>
+          {liveAt && b.status !== 'in_progress' && (
+            <span className="t-sm row gap-1" style={{ color: 'var(--success-600)' }}>
+              <LocateFixed style={{ width: 14, height: 14 }} />
+              Live location · {fmtKm(haversineKm(liveAt, b.pickup))} from pickup · {relative(liveAt.at).toLowerCase()}
+            </span>
+          )}
         </span>
         {statusBadge}
       </div>
@@ -685,7 +700,7 @@ function RiderRow({ b, live, done, busy, onStep, onChat, onRemove }: { b: RiderB
           {['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(b.status) && (
             <a
               className="btn btn--secondary btn--sm"
-              href={directionsUrl(b.status === 'in_progress' ? b.drop : b.pickup)}
+              href={directionsUrl(b.status === 'in_progress' ? b.drop : (liveAt ?? b.pickup))}
               target="_blank"
               rel="noreferrer"
               aria-label={b.status === 'in_progress' ? `Navigate to ${name}’s drop` : `Navigate to ${name}’s pickup`}

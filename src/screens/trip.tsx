@@ -13,6 +13,7 @@ import { dayTime, firstName, money, plural, time } from '@/lib/format'
 import type { Booking, BookingStatus } from '@/lib/types'
 import { ApiError, Q, bookings, useQuery, type BookingDetail } from '@/services/api'
 import { RidePinCard, ShareTripButton } from '@/components/Safety'
+import { RiderLiveBar, useShareRiderLocation } from '@/components/RiderLive'
 import { useSearch } from '@/state/search'
 
 export const BOOKING_STATUS: Record<BookingStatus, { label: string; short: string; tone: 'verified' | 'success' | 'warning' | 'error' | 'info' | undefined }> = {
@@ -105,6 +106,9 @@ export function TripStatus() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState(CANCEL_REASONS[0])
   const [cancelling, setCancelling] = useState(false)
+  // In the last 30 min before a confirmed ride, help the driver find you (as on the live screen).
+  const soon = !!q.data && q.data.role === 'rider' && q.data.booking.status === 'confirmed' && new Date(q.data.ride.departAt).getTime() - Date.now() < 30 * 60_000
+  const shareMe = useShareRiderLocation(bookingId ?? '', soon)
 
   if (q.loading)
     return (
@@ -263,6 +267,11 @@ export function TripStatus() {
             <Notice tone="info" icon={<Clock />}>
               Pay to lock in your seat — online, by UPI to {name}, or in cash at pickup.
             </Notice>
+          </div>
+        )}
+        {shareMe.state !== 'off' && (
+          <div style={{ marginBottom: 12 }}>
+            <RiderLiveBar driver={name} share={shareMe} />
           </div>
         )}
         {detail.ridePin && booking.status !== 'accepted' && (

@@ -288,6 +288,37 @@ describe('safety', () => {
     expect((await owner.get('/api/admin/users?q=owner')).body).toHaveLength(0)
   })
 
+  it('shares the rider’s live location with their driver until pickup', async () => {
+    const d = (await login('live.driver@vit.edu.in')).agent
+    await d.patch('/api/me').set(H).send({ phone: '9876533330', studentId: 'VIT3330', onboarded: true })
+    await d.put('/api/me/vehicle').set(H).send({ make: 'Kia', model: 'Sonet', color: 'Red', plate: 'MH01ZZ4444', seats: 3, fuel: 'petrol' })
+    const r = (await login('live.rider@vit.edu.in')).agent
+    await r.patch('/api/me').set(H).send({ phone: '9876533331', studentId: 'VIT3331', onboarded: true })
+    const departAt = new Date(Date.now() + 11 * 3600_000).toISOString()
+    const rideId = (await d.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 2, farePerSeat: 50, maxDetourKm: 3, preferences: [] })).body.id
+    const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
+    const id = (await r.post('/api/bookings').set(H).send({ rideId, query })).body.id
+    const here = { lat: 19.0231, lng: 72.8702, accuracy: 12 }
+    // Not before the seat is confirmed.
+    expect((await r.post(`/api/bookings/${id}/rider-location`).set(H).send(here)).status).toBe(409)
+    await d.post(`/api/bookings/${id}/respond`).set(H).send({ accept: true })
+    await r.post(`/api/bookings/${id}/pay`).set(H).send({ method: 'cash' })
+    expect((await r.post(`/api/bookings/${id}/rider-location`).set(H).send(here)).status).toBe(200)
+    // Only the rider can send it; only the driver sees it.
+    expect((await d.post(`/api/bookings/${id}/rider-location`).set(H).send(here)).status).toBe(403)
+    const seen = (await d.get(`/api/rides/${rideId}`)).body.bookings.find((x: { id: string }) => x.id === id)
+    expect(seen.riderLocation).toMatchObject({ lat: 19.0231, lng: 72.8702, accuracy: 12 })
+    expect((await r.get(`/api/rides/${rideId}`)).body.bookings).toBeUndefined()
+    // Picked up → no longer kept.
+    await d.post(`/api/rides/${rideId}/start`).set(H).send({})
+    const pin = (await r.get(`/api/bookings/${id}`)).body.ridePin
+    await d.post(`/api/bookings/${id}/arrived`).set(H).send({})
+    expect((await d.post(`/api/bookings/${id}/picked-up`).set(H).send({ pin })).status).toBe(200)
+    const after = (await d.get(`/api/rides/${rideId}`)).body.bookings.find((x: { id: string }) => x.id === id)
+    expect(after.riderLocation).toBeUndefined()
+    expect((await r.post(`/api/bookings/${id}/rider-location`).set(H).send(here)).status).toBe(409)
+  })
+
   it('locks the PIN after 5 wrong tries and alerts the rider', async () => {
     const d = (await login('pin.driver@vit.edu.in')).agent
     await d.patch('/api/me').set(H).send({ phone: '9876533320', studentId: 'VIT3320', onboarded: true })

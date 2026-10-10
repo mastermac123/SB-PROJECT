@@ -71,6 +71,8 @@ export type IdStatus = 'none' | 'pending' | 'verified' | 'rejected'
 export type RideStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
 
 export type DriverLocation = { lat: number; lng: number; heading?: number; at: string }
+/** Rider's phone GPS while waiting for pickup (like Uber/Ola): shown to their driver only. */
+export type RiderLocation = { lat: number; lng: number; accuracy?: number; at: string }
 
 export type Ride = {
   id: string
@@ -204,7 +206,7 @@ export type RideDetail = {
   vehicle: Vehicle
   myBooking?: Booking
   /** Only for the driver of the ride. */
-  bookings?: (Booking & { rider: RiderInfo })[]
+  bookings?: (Booking & { rider: RiderInfo; riderLocation?: RiderLocation })[]
 }
 
 export type BookingDetail = {
@@ -259,3 +261,4 @@ export type ServerEvent =
   | { type: 'sync' }
   | { type: 'notification'; notification: AppNotification }
   | { type: 'location'; rideId: string; location: DriverLocation }
+  | { type: 'riderLocation'; rideId: string; bookingId: string; location: RiderLocation }

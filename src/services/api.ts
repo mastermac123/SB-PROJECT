@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type {
+  RiderLocation,
   AppNotification,
   Booking,
   BookingDetail,
@@ -146,6 +147,8 @@ export function useQuery<T>(key: string | null) {
 type LocationListener = (rideId: string, loc: DriverLocation) => void
 const notificationListeners = new Set<(n: AppNotification) => void>()
 const locationListeners = new Set<LocationListener>()
+type RiderLocationListener = (rideId: string, bookingId: string, loc: RiderLocation) => void
+const riderLocationListeners = new Set<RiderLocationListener>()
 const connListeners = new Set<() => void>()
 const syncListeners = new Set<() => void>()
 let source: EventSource | null = null
@@ -182,6 +185,10 @@ export function connectEvents() {
     }
     if (ev.type === 'location') {
       locationListeners.forEach((l) => l(ev.rideId, ev.location))
+      return
+    }
+    if (ev.type === 'riderLocation') {
+      riderLocationListeners.forEach((l) => l(ev.rideId, ev.bookingId, ev.location))
       return
     }
     if (ev.type === 'notification') notificationListeners.forEach((l) => l(ev.notification))
@@ -242,6 +249,23 @@ export function useDriverLocation(rideId: string | undefined, initial?: DriverLo
     }
   }, [rideId])
   return loc
+}
+
+/** Driver: each rider's live location (by booking id), starting from what the ride detail had. */
+export function useRiderLocations(rideId: string | undefined, initial: Record<string, RiderLocation | undefined>) {
+  const [locs, setLocs] = useState<Record<string, RiderLocation>>({})
+  const merged: Record<string, RiderLocation> = {}
+  for (const [k, v] of Object.entries(initial)) if (v) merged[k] = v
+  for (const [k, v] of Object.entries(locs)) if (!merged[k] || v.at > merged[k].at) merged[k] = v
+  useEffect(() => {
+    if (!rideId) return
+    const fn: RiderLocationListener = (id, bookingId, l) => id === rideId && setLocs((m) => ({ ...m, [bookingId]: l }))
+    riderLocationListeners.add(fn)
+    return () => {
+      riderLocationListeners.delete(fn)
+    }
+  }, [rideId])
+  return merged
 }
 
 /* ==========================================================================
@@ -456,6 +480,7 @@ export const bookings = {
   cancel: (id: string, reason: string) => mutate(post(`/bookings/${id}/cancel`, { reason })),
   arrived: (id: string) => mutate(post(`/bookings/${id}/arrived`)),
   pickedUp: (id: string, pin?: string) => mutate(post(`/bookings/${id}/picked-up`, { pin })),
+  riderLocation: (id: string, lat: number, lng: number, accuracy: number | null) => post(`/bookings/${id}/rider-location`, { lat, lng, accuracy }),
   share: (id: string) => post<{ url: string; text: string; local: boolean }>(`/bookings/${id}/share`),
   dropped: (id: string) => mutate(post(`/bookings/${id}/dropped`)),
   rate: (id: string, stars: number, tags: string[], comment: string) => mutate(post(`/bookings/${id}/rate`, { stars, tags, comment })),
