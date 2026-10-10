@@ -62,6 +62,9 @@ export const env = {
   tomtomKey: (process.env.TOMTOM_KEY || '').trim(),
   /** Optional: Ola Maps key for Indian building/society names and search (maps.olakrutrim.com). */
   olaKey: (process.env.OLA_MAPS_KEY || '').trim(),
+  /** Optional: Ola Maps OAuth client credentials (instead of the API key). */
+  olaClientId: (process.env.OLA_CLIENT_ID || '').trim(),
+  olaClientSecret: (process.env.OLA_CLIENT_SECRET || '').trim(),
   /** Optional: Mappls (MapmyIndia) REST key for live Indian traffic in trip times (apis.mappls.com). */
   mapplsKey: (process.env.MAPPLS_KEY || '').trim(),
   /**

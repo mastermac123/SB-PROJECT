@@ -33,8 +33,8 @@ const server = app.listen(env.port, () => {
     if (r === 'rejected') console.log('[ridesync] ⚠ TomTom rejected TOMTOM_KEY — routes use OSRM without live traffic. Copy the key again from developer.tomtom.com and run setup.bat.')
     if (r === 'none') console.log('[ridesync] Live traffic off — add a free TomTom key with setup.bat (see README "Live traffic")')
   })
-  console.log(`[ridesync] trip times (live traffic): ${[env.google.key && 'Google', env.tomtomKey && 'TomTom', env.olaKey && 'Ola Maps', env.mapplsKey && 'Mappls'].filter(Boolean).join(' + ') || 'none — add a TomTom, Ola Maps or Mappls key with setup.bat'}${process.env.CITY_SPEED_FLOOR === 'on' ? ' + city-speed minimum' : ''}`)
-  console.log(`[ridesync] pin names: ${[env.google.key && 'Google', env.olaKey && 'Ola Maps', env.tomtomKey && 'TomTom places', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
+  console.log(`[ridesync] trip times (live traffic): ${[env.google.key && 'Google', env.tomtomKey && 'TomTom', (env.olaKey || env.olaClientId) && 'Ola Maps', env.mapplsKey && 'Mappls'].filter(Boolean).join(' + ') || 'none — add a TomTom, Ola Maps or Mappls key with setup.bat'}${process.env.CITY_SPEED_FLOOR === 'on' ? ' + city-speed minimum' : ''}`)
+  console.log(`[ridesync] pin names: ${[env.google.key && 'Google', (env.olaKey || env.olaClientId) && 'Ola Maps', env.tomtomKey && 'TomTom places', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
   const g = !!env.google.key
   console.log(
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${g ? 'Google' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,

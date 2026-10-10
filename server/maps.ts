@@ -3,6 +3,7 @@ import { CAMPUS } from '../src/data/places'
 import { env } from './env'
 import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
 import { isHighway, olaConfigured, olaReverse, olaSearch, tomtomNearby } from './landmarks'
+import { olaHasKey } from './ola'
 import { tomtomConfigured } from './traffic'
 
 /**
@@ -53,11 +54,11 @@ export function mapsConfig() {
     vectorStyle: maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
     // Ola Maps' Indian map style first when there's an Ola key; the one above if it can't load.
     vectorStyles: [
-      ...(olaConfigured() ? ['https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json'] : []),
+      ...(olaConfigured() && olaHasKey() ? ['https://api.olamaps.io/tiles/vector/v1/styles/default-light-standard/style.json'] : []),
       maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
     ],
     /** Ola Maps loads its map pieces in the browser, so it needs the key there (restrict it in the Ola dashboard). */
-    olaKey: olaConfigured() ? env.olaKey : null,
+    olaKey: olaConfigured() && olaHasKey() ? env.olaKey : null,
     search: google ? 'google' : olaConfigured() ? 'ola' : maptiler() ? 'maptiler' : 'openstreetmap',
     routing: google ? 'google' : tomtomConfigured() ? 'tomtom' : env.orsKey ? 'openrouteservice' : 'osrm',
     /** Live traffic layer: tiles come from /api/traffic/{z}/{x}/{y}.png */

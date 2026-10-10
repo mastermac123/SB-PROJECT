@@ -2,6 +2,7 @@ import type { Place } from '../src/lib/types'
 import { haversineKm } from '../src/lib/geo'
 import { env } from './env'
 import { decodePolyline } from './google'
+import { olaFetch, olaReady } from './ola'
 
 /**
  * Building and landmark names for a dropped pin, from services that know Indian
@@ -12,7 +13,8 @@ import { decodePolyline } from './google'
  * to the next service.
  */
 
-export const olaConfigured = () => !!env.olaKey
+export const olaConfigured = olaReady
+const olaGet = async <T>(url: string): Promise<T> => (await (await olaFetch(url, { headers: { 'Accept-Language': 'en' } })).json()) as T
 export type PlaceName = { name: string; area: string }
 
 /** "NH 48", "Western Express Highway", "SH-1"… — not useful as a pickup name. */
@@ -45,10 +47,9 @@ type OlaPrediction = {
 
 /** Named venue within ~60 m, else the first meaningful part of the street address. */
 export async function olaReverse(lat: number, lng: number): Promise<PlaceName | null> {
-  const key = encodeURIComponent(env.olaKey)
   try {
-    const near = await getJson<{ predictions?: OlaPrediction[] }>(
-      `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&location=${lat},${lng}&radius=60&limit=5&api_key=${key}`,
+    const near = await olaGet<{ predictions?: OlaPrediction[] }>(
+      `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&location=${lat},${lng}&radius=60&limit=5`,
     )
     const best = (near.predictions ?? [])
       .filter((p) => usable(p.structured_formatting?.main_text) && (p.distance_meters == null || p.distance_meters <= 60))
@@ -61,7 +62,7 @@ export async function olaReverse(lat: number, lng: number): Promise<PlaceName | 
     console.error('[ridesync] Ola Maps nearby failed', (e as Error).message)
   }
   try {
-    const r = await getJson<{ results?: { name?: string; formatted_address?: string }[] }>(`https://api.olamaps.io/places/v1/reverse-geocode?latlng=${lat},${lng}&api_key=${key}`)
+    const r = await olaGet<{ results?: { name?: string; formatted_address?: string }[] }>(`https://api.olamaps.io/places/v1/reverse-geocode?latlng=${lat},${lng}`)
     for (const x of r.results ?? []) {
       const segs = parts(x.formatted_address ?? '')
       const name = usable(x.name) ? x.name.trim() : segs.find(usable)
@@ -75,8 +76,8 @@ export async function olaReverse(lat: number, lng: number): Promise<PlaceName | 
 
 /** Ola Maps search suggestions, biased to campus. */
 export async function olaSearch(q: string, near: { lat: number; lng: number }): Promise<Place[]> {
-  const r = await getJson<{ predictions?: OlaPrediction[] }>(
-    `https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(q)}&location=${near.lat},${near.lng}&api_key=${encodeURIComponent(env.olaKey)}`,
+  const r = await olaGet<{ predictions?: OlaPrediction[] }>(
+    `https://api.olamaps.io/places/v1/autocomplete?input=${encodeURIComponent(q)}&location=${near.lat},${near.lng}`,
   )
   return (r.predictions ?? [])
     .filter((p) => p.geometry?.location && (p.structured_formatting?.main_text || p.description))
@@ -126,11 +127,11 @@ export async function tomtomNearby(lat: number, lng: number): Promise<PlaceName 
  * closer to real Mumbai times than other free services. Null if unavailable.
  */
 export async function olaDirections(a: { lat: number; lng: number }, b: { lat: number; lng: number }): Promise<{ durationMin: number; distanceKm: number; coords: { lat: number; lng: number }[] } | null> {
-  if (!env.olaKey) return null
+  if (!olaReady()) return null
   try {
-    const res = await fetch(
-      `https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=full&traffic_metadata=false&api_key=${encodeURIComponent(env.olaKey)}`,
-      { method: 'POST', signal: AbortSignal.timeout(6000), headers: { 'X-Request-Id': `ridesync-${Date.now()}` } },
+    const res = await olaFetch(
+      `https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=full&traffic_metadata=false`,
+      { method: 'POST' },
     )
     if (!res.ok) throw new Error(`ola directions ${res.status}`)
     const j = (await res.json()) as { routes?: { overview_polyline?: string; legs?: { duration?: number | { value?: number }; distance?: number | { value?: number } }[] }[] }

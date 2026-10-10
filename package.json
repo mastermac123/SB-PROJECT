@@ -14,7 +14,8 @@
     "start": "node --import tsx server/prod.ts",
     "typecheck": "tsc -b --noEmit && tsc -p tsconfig.server.json",
     "test": "vitest run",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "ola": "node scripts/ola.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
