@@ -3,6 +3,7 @@ import { fmtKm } from '@/lib/matching'
 import { dayLabel, firstName, money, time } from '@/lib/format'
 import type { MatchResult } from '@/lib/types'
 import { MatchScore } from './MatchScore'
+import { AiChance } from './AiHints'
 import { WomenOnlyTag } from './Safety'
 import { Avatar, Rating, cx } from './ui'
 
@@ -51,6 +52,7 @@ export function RideCard({ match, onOpen, active, showDay }: { match: MatchResul
       <div className="ride-card__foot">
         <div className="ride-card__facts">
           {ride.womenOnly && <WomenOnlyTag />}
+          <AiChance chance={match.aiChance} compact />
           <span>
             <Footprints />
             {match.pickupDistanceKm < 0.15 ? 'Pickup at your location' : `Pickup ${fmtKm(match.pickupDistanceKm)} away`}

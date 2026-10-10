@@ -2,6 +2,7 @@ import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '..
 import type { LatLng } from '../src/lib/types'
 import { bandOf, dayOf, factorFor, type Band, type Day } from './calibrate'
 import { all } from './db'
+import { predictEta } from './ml/models'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
 import { olaDirections } from './landmarks'
@@ -162,6 +163,13 @@ async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): P
   const mp = fix('mappls', mappls?.min ?? null)
   // Until real trips have calibrated a source (or Mappls answers with live traffic), never go
   // faster than typical Mumbai speeds for the hour.
+  // Trained trip-time model (ridge regression on real RideSync trips) beats everything else.
+  const ml = when.getTime() - Date.now() < 3600_000 ? predictEta({ km: route.distanceKm, tomtom: route.source === 'tomtom' ? route.durationMin : null, ola, mappls: mappls?.min ?? null, at: when.toISOString() }) : null
+  if (ml !== null) {
+    const freeFlowMl = Math.max(1, route.durationMin - (route.trafficDelayMin ?? 0))
+    const delayMl = Math.max(0, ml - freeFlowMl)
+    return { ...route, durationMin: Math.max(ml, Math.round(freeFlowMl * 0.8)), trafficDelayMin: delayMl, traffic: trafficLevel(delayMl, freeFlowMl) }
+  }
   const trusted = tt.calibrated || ol.calibrated || mp.calibrated || !!mappls?.live
   const best = Math.max(route.source === 'tomtom' ? tt.min : route.durationMin, ol.min, mp.min, trusted ? 0 : cityFloorMin(route.distanceKm, when))
   if (best === route.durationMin) return route

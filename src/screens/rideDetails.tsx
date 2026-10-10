@@ -18,6 +18,7 @@ import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, matchRide, useMe, useQuery, type RideDetail } from '@/services/api'
 import { useSearch, withInstant } from '@/state/search'
 import { WomenOnlyTag } from '@/components/Safety'
+import { AiChance } from '@/components/AiHints'
 import { RideCardSkeleton } from '@/components/ui'
 
 const ACTIVE_BOOKING = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
@@ -196,6 +197,7 @@ export function RideDetails() {
           {ride.womenOnly && <WomenOnlyTag />}
           {driver.completionRate >= 0.95 && <Badge>{Math.round(driver.completionRate * 100)}% rides completed</Badge>}
           {match?.history && <Badge tone="info">{match.history}</Badge>}
+          <AiChance chance={match?.aiChance} />
         </div>
 
         <div className="vehicle-row">

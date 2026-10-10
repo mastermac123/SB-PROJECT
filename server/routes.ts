@@ -44,6 +44,9 @@ import {
 } from './logic'
 import { getRoute } from './routing'
 import { accuracy, recordDrop, recordPickup } from './calibrate'
+import { acceptChance, mlReport, noShowRisk, trainAll } from './ml/models'
+import { addDemoData, demoCount, removeDemoData } from './ml/demo'
+import { checkIdCard, type IdOcr } from './ocr'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -451,7 +454,17 @@ api.post(
     const rows = all(`SELECT * FROM rides WHERE status = 'scheduled' AND driver_id != ? AND depart_at > ? AND depart_at < ? AND (women_only = 0 OR ? = 'female')`, meId(req), lo, hi, me(req).gender)
     const hist = riderHistory(meId(req))
     const results = rows.map((r) => scoreFor(r, query, meId(req), hist)).filter((m): m is MatchResult => !!m)
-    return { results: results.sort((a, b) => b.score - a.score), ridesInWindow: rows.length }
+    // ML ranking: blend the rule-based score with the model's chance that this driver accepts.
+    const raw = new Map(rows.map((r) => [String(r.id), r]))
+    for (const m of results) {
+      const chance = acceptChance(
+        { rider_id: meId(req), pickup: JSON.stringify(query.pickup), drop_place: JSON.stringify(query.drop), match_score: m.score, seats: query.seats, created_at: nowIso() },
+        raw.get(m.ride.id)!,
+      )
+      if (chance !== null) m.aiChance = Math.round(chance * 100) / 100
+    }
+    const rank = (m: MatchResult) => (m.aiChance === undefined ? m.score : 0.7 * m.score + 30 * m.aiChance)
+    return { results: results.sort((a, b) => rank(b) - rank(a)), ridesInWindow: rows.length }
   }),
 )
 
@@ -500,6 +513,7 @@ api.get(
           ...bk,
           rider: { ...publicUser(riderRow ?? bk.riderId), phone: HOLDING.includes(bk.status) && riderRow ? String(riderRow.phone) : undefined },
           riderLocation: freshRiderLocation(b),
+          noShowRisk: ['pending', 'accepted', 'confirmed'].includes(bk.status) ? (noShowRisk(b, r) ?? undefined) : undefined,
         }
       })
     }
@@ -1415,7 +1429,9 @@ api.put(
   h((req) => {
     const { image } = parse(z.object({ image: z.string().max(380_000).regex(/^data:image\/(jpeg|png|webp);base64,/, 'Upload a photo of your ID card') }), req.body)
     if (me(req).id_status === 'verified') throw new HttpError(409, 'Your student ID is already verified.')
-    run(`UPDATE users SET id_card = ?, id_status = 'pending', id_note = NULL, id_submitted_at = ? WHERE id = ?`, image, nowIso(), meId(req))
+    run(`UPDATE users SET id_card = ?, id_status = 'pending', id_note = NULL, id_ocr = NULL, id_submitted_at = ? WHERE id = ?`, image, nowIso(), meId(req))
+    // AI check in the background: read the card with OCR and compare with the profile.
+    void checkIdCard(meId(req), image)
     for (const a of all<{ id: string }>(`SELECT id FROM users WHERE deleted = 0 AND LOWER(email) IN (${env.adminEmails.map(() => '?').join(',') || "''"})`, ...env.adminEmails))
       notify(a.id, 'system', 'Student ID to check', `${me(req).name} uploaded their ID card.`, '/admin/ids')
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
@@ -1431,7 +1447,8 @@ api.get(
   requireUser,
   h((req) => {
     requireAdmin(req)
-    return all(`SELECT id, name, email, student_id, programme, id_card, id_submitted_at FROM users WHERE id_status = 'pending' AND deleted = 0 ORDER BY id_submitted_at`).map((u) => ({
+    return all(`SELECT id, name, email, student_id, programme, id_card, id_submitted_at, id_ocr FROM users WHERE id_status = 'pending' AND deleted = 0 ORDER BY id_submitted_at`).map((u) => ({
+      ocr: u.id_ocr ? (JSON.parse(String(u.id_ocr)) as IdOcr) : undefined,
       userId: String(u.id),
       name: String(u.name),
       email: String(u.email),
@@ -1452,11 +1469,11 @@ api.post(
     const u = one(`SELECT id, id_status FROM users WHERE id = ?`, param(req, 'userId'))
     if (!u || u.id_status !== 'pending') throw new HttpError(404, 'Already reviewed.')
     if (p.approve) {
-      run(`UPDATE users SET id_status = 'verified', id_note = NULL, id_card = NULL WHERE id = ?`, u.id)
+      run(`UPDATE users SET id_status = 'verified', id_note = NULL, id_card = NULL, id_ocr = NULL WHERE id = ?`, u.id)
       notify(String(u.id), 'system', 'You’re verified ✓', 'Your student ID was checked. Others now see the Verified badge on your profile.', '/profile')
     } else {
       const note = p.note?.trim() || 'The photo wasn’t clear or didn’t match your profile.'
-      run(`UPDATE users SET id_status = 'rejected', id_note = ?, id_card = NULL WHERE id = ?`, note, u.id)
+      run(`UPDATE users SET id_status = 'rejected', id_note = ?, id_card = NULL, id_ocr = NULL WHERE id = ?`, note, u.id)
       notify(String(u.id), 'system', 'ID card not verified', `${note} Upload a clearer photo of your VIT ID card.`, '/profile')
     }
     sync([String(u.id)])
@@ -1693,3 +1710,49 @@ export function sendRideReminders(now = Date.now()) {
     }
   }
 }
+
+/* ---- Admin: AI / ML ------------------------------------------------------ */
+
+api.get(
+  '/admin/ml',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    return { ...mlReport(), demo: demoCount() }
+  }),
+)
+
+api.post(
+  '/admin/ml/train',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    trainAll()
+    return mlReport()
+  }),
+)
+
+/** Optional demo data for presentations — tagged so it can be removed completely. */
+api.post(
+  '/admin/demo',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const added = addDemoData()
+    trainAll()
+    broadcastSync()
+    return { added, demo: demoCount() }
+  }),
+)
+
+api.delete(
+  '/admin/demo',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const removed = removeDemoData()
+    trainAll()
+    broadcastSync()
+    return { removed, demo: demoCount() }
+  }),
+)

@@ -1,4 +1,4 @@
-import { BadgeCheck, CarFront, ChartColumn, IdCard, LogOut, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react'
+import { BadgeCheck, Brain, CarFront, ChartColumn, IdCard, LogOut, RefreshCw, Search, ShieldCheck, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
@@ -6,6 +6,7 @@ import { NetworkError, StateView } from '@/components/States'
 import { Badge, Button, Chip, RideCardSkeleton, cx } from '@/components/ui'
 import { dayTime, money, relative } from '@/lib/format'
 import { Q, auth, useMe, useQuery, type IdCardReview } from '@/services/api'
+import { AiTab } from './adminAi'
 import { Review } from './adminVerify'
 
 /* ---- Types (match /api/admin/*) ------------------------------------------ */
@@ -50,6 +51,7 @@ const TABS = [
   { to: '/admin/rides', label: 'Rides', icon: <CarFront /> },
   { to: '/admin/users', label: 'Students', icon: <Users /> },
   { to: '/admin/ids', label: 'ID checks', icon: <IdCard /> },
+  { to: '/admin/ai', label: 'AI', icon: <Brain /> },
 ]
 
 export function AdminApp() {
@@ -100,7 +102,7 @@ export function AdminApp() {
         ))}
       </nav>
       <main className="admin__main">
-        {tab === 'rides' ? <RidesTab /> : tab === 'users' ? <UsersTab /> : tab === 'ids' ? <IdsTab /> : tab ? <Navigate to="/admin" replace /> : <Overview q={stats} />}
+        {tab === 'rides' ? <RidesTab /> : tab === 'users' ? <UsersTab /> : tab === 'ids' ? <IdsTab /> : tab === 'ai' ? <AiTab /> : tab ? <Navigate to="/admin" replace /> : <Overview q={stats} />}
       </main>
     </div>
   )

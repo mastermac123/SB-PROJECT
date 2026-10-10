@@ -157,6 +157,7 @@ addColumn('users', 'id_card', 'TEXT')
 addColumn('users', 'id_status', "TEXT NOT NULL DEFAULT 'none'")
 addColumn('users', 'id_note', 'TEXT')
 addColumn('users', 'id_submitted_at', 'TEXT')
+addColumn('users', 'id_ocr', 'TEXT')
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bookings_share ON bookings(share_token)')
 
 // RideSync Wallet: every credit/debit is a row; the balance is their sum (in rupees).

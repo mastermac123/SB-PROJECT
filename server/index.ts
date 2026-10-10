@@ -6,9 +6,13 @@ import { checkMappls } from './mappls'
 import { razorpayConfigured } from './env'
 import { checkRazorpay } from './razorpay'
 import { sendRideReminders } from './routes'
+import { trainAll } from './ml/models'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
 const app = createApp()
+// Machine-learning models: train shortly after start-up, then every 30 minutes on new data.
+setTimeout(trainAll, 3000)
+setInterval(trainAll, 30 * 60_000)
 // 15-minute ride reminders.
 setInterval(() => {
   try {

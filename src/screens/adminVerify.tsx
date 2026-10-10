@@ -39,6 +39,22 @@ export function Review({ c, onDone }: { c: IdCardReview; onDone: () => void }) {
         </span>
       </div>
       <img src={c.image} alt={`ID card uploaded by ${c.name}`} />
+      <div className="ocr-checks" aria-label="AI check">
+        <span className="t-sm t-strong">AI check (OCR)</span>
+        {!c.ocr ? (
+          <span className="t-sm t-muted">Reading the card…</span>
+        ) : c.ocr.status === 'failed' ? (
+          <span className="t-sm t-muted">Couldn’t read this photo — check by eye.</span>
+        ) : (
+          <>
+            <span className={`ocr-check ${c.ocr.nameMatch ? 'is-ok' : 'is-bad'}`}>{c.ocr.nameMatch ? '✓' : '✗'} Name on card {c.ocr.nameMatch ? 'matches' : 'doesn’t match'} “{c.name}”</span>
+            <span className={`ocr-check ${c.ocr.idMatch ? 'is-ok' : 'is-bad'}`}>{c.ocr.idMatch ? '✓' : '✗'} Student ID {c.ocr.idMatch ? 'found' : 'not found'} ({c.studentId})</span>
+            <span className="t-caption t-muted" style={{ fontWeight: 400 }}>
+              Read with {c.ocr.confidence}% confidence: “{c.ocr.text.slice(0, 120)}{c.ocr.text.length > 120 ? '…' : ''}”
+            </span>
+          </>
+        )}
+      </div>
       <span className="t-sm t-muted">Check the name, photo and student ID match the profile above.</span>
       <div className="row wrap gap-2">
         {REASONS.map((r) => (

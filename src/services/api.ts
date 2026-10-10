@@ -364,9 +364,33 @@ export async function uploadIdCard(image: string) {
   return u
 }
 
-export type IdCardReview = { userId: string; name: string; email: string; studentId: string; programme?: string; image: string; submittedAt: string }
+export type IdOcr = { status: 'done' | 'failed'; nameMatch: boolean; idMatch: boolean; nameScore: number; confidence: number; text: string; at: string }
+export type IdCardReview = { userId: string; name: string; email: string; studentId: string; programme?: string; image: string; submittedAt: string; ocr?: IdOcr }
 export const admin = {
   review: (userId: string, approve: boolean, note?: string) => mutate(post(`/admin/id-cards/${userId}`, { approve, note })),
+  train: () => mutate(post('/admin/ml/train')),
+  addDemo: () => mutate(post<{ added: DemoCount; demo: DemoCount }>('/admin/demo')),
+  removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
+}
+
+export type DemoCount = { users: number; rides: number; bookings: number }
+export type MlModel = {
+  name: 'match' | 'risk' | 'eta' | 'demand'
+  title: string
+  method: string
+  status: 'trained' | 'waiting'
+  samples: number
+  needed: number
+  trainedAt?: string
+  metrics?: Record<string, number | null>
+  baseline?: Record<string, number | null>
+  importance?: { feature: string; weight: number; direction: 'up' | 'down' }[]
+  note?: string
+}
+export type MlReport = {
+  models: MlModel[]
+  forecast: { hours: { at: string; expected: number }[]; areas: { area: string; trips: number }[]; backtestMae: number | null } | null
+  demo: DemoCount
 }
 
 export async function saveVehicle(v: Omit<Vehicle, 'id'>) {

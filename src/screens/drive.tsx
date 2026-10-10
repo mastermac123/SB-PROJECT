@@ -27,6 +27,7 @@ import { defaultQuery } from '@/state/search'
 import { PREF_OPTIONS } from './find'
 import { shareLink } from './rideDetails'
 import { FREE_WAIT_S, mmss, useWaited } from '@/components/RiderLive'
+import { Reliability } from '@/components/AiHints'
 import { paymentLabel } from './trip'
 
 const DRIVER_PREFS: { value: RidePreference; icon: React.ReactNode }[] = [...PREF_OPTIONS.filter((p) => p.value !== 'minimal_detour'), { value: 'ac', icon: <Snowflake /> }, { value: 'music_ok', icon: <Music /> }]
@@ -334,7 +335,7 @@ function useShareLocation(rideId: string, active: boolean) {
    Driver — active ride & requests
    ========================================================================== */
 
-type RiderBooking = Booking & { rider: RiderInfo }
+type RiderBooking = Booking & { rider: RiderInfo; noShowRisk?: number }
 
 export function DriverRide() {
   const { rideId } = useParams()
@@ -785,6 +786,7 @@ function RequestCard({ booking, onAccept, onDecline, busy, full }: { booking: Ri
       </div>
       <div className="row wrap gap-2">
         {rider.verified && <VerifiedBadge />}
+        <Reliability risk={booking.noShowRisk} />
         {booking.seats > 1 && <Badge>{plural(booking.seats, 'seat')}</Badge>}
       </div>
       <Stops from={{ title: booking.pickup.name, subtitle: booking.pickup.area }} to={{ title: booking.drop.name }} />

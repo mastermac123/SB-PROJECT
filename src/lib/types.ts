@@ -194,6 +194,8 @@ export type MatchResult = {
   reasons: string[]
   caveats: string[]
   history?: string
+  /** ML: chance (0–1) the driver accepts a request like this one, when the model is trained. */
+  aiChance?: number
 }
 
 /* ---- API response shapes -------------------------------------------------- */
@@ -206,7 +208,7 @@ export type RideDetail = {
   vehicle: Vehicle
   myBooking?: Booking
   /** Only for the driver of the ride. */
-  bookings?: (Booking & { rider: RiderInfo; riderLocation?: RiderLocation })[]
+  bookings?: (Booking & { rider: RiderInfo; riderLocation?: RiderLocation; noShowRisk?: number })[]
 }
 
 export type BookingDetail = {
