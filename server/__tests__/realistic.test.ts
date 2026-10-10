@@ -12,6 +12,7 @@ afterEach(() => {
 })
 
 const { getRoute, cityFloorMin } = await import('../routing')
+const { resetMappls } = await import('../mappls')
 
 describe('Realistic Mumbai trip times', () => {
   it('uses Ola Maps when it says the trip is slower than TomTom', async () => {
@@ -29,6 +30,7 @@ describe('Realistic Mumbai trip times', () => {
   })
 
   it('uses Mappls when it reports more traffic than TomTom and Ola', async () => {
+    resetMappls()
     const urls: string[] = []
     globalThis.fetch = vi.fn(async (u: unknown) => {
       const url = String(u)
@@ -44,6 +46,28 @@ describe('Realistic Mumbai trip times', () => {
     expect(r.durationMin).toBeGreaterThanOrEqual(14)
     // Falls through route_traffic (not allowed for this key) to route_eta.
     expect(urls.some((u) => u.includes('/route_eta/driving/72.87,19.03;72.86,19.05'))).toBe(true)
+  })
+
+  it('signs in to Mappls with Client ID/Secret and trusts its live traffic over the typical-speed rule', async () => {
+    resetMappls()
+    const { env } = await import('../env')
+    const saved = { key: env.mapplsKey, id: env.mapplsClientId, secret: env.mapplsClientSecret }
+    Object.assign(env, { mapplsKey: '', mapplsClientId: 'cid', mapplsClientSecret: 'sec' })
+    const urls: string[] = []
+    globalThis.fetch = vi.fn(async (u: unknown) => {
+      const url = String(u)
+      urls.push(url)
+      if (url.includes('api.tomtom.com/routing'))
+        return new Response(JSON.stringify({ routes: [{ summary: { lengthInMeters: 20000, travelTimeInSeconds: 1200, trafficDelayInSeconds: 0, noTrafficTravelTimeInSeconds: 1200 }, legs: [{ points: [{ latitude: 19.02, longitude: 72.87 }, { latitude: 19.2, longitude: 72.85 }] }] }] }))
+      if (url.includes('outpost.mappls.com')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 86400 }))
+      if (url.includes('route.mappls.com') && url.includes('access_token=tok')) return new Response(JSON.stringify({ routes: [{ duration: 1500, distance: 20000 }] }))
+      return new Response('{}', { status: 401 })
+    }) as typeof fetch
+    // 20 km in the weekday evening rush: the rule alone would say ~73 min; Mappls live says 25.
+    const r = await getRoute({ lat: 19.1, lng: 72.87 }, { lat: 19.25, lng: 72.86 })
+    expect(r.durationMin).toBe(25)
+    expect(urls.some((u) => u.includes('outpost.mappls.com'))).toBe(true)
+    Object.assign(env, { mapplsKey: saved.key, mapplsClientId: saved.id, mapplsClientSecret: saved.secret })
   })
 
   it('never promises faster than city traffic allows', () => {

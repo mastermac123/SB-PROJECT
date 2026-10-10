@@ -67,6 +67,9 @@ export const env = {
   olaClientSecret: (process.env.OLA_CLIENT_SECRET || '').trim(),
   /** Optional: Mappls (MapmyIndia) REST key for live Indian traffic in trip times (apis.mappls.com). */
   mapplsKey: (process.env.MAPPLS_KEY || '').trim(),
+  /** Optional: Mappls OAuth client credentials (newer accounts) instead of / as well as the static key. */
+  mapplsClientId: (process.env.MAPPLS_CLIENT_ID || '').trim(),
+  mapplsClientSecret: (process.env.MAPPLS_CLIENT_SECRET || '').trim(),
   /**
    * Optional: Google Maps Platform. One key turns on Google place search, place names
    * and driving routes (server side) and the Google map (browser side).

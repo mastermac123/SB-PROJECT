@@ -243,7 +243,7 @@ if (await yes('Add Mappls / MapmyIndia (free live Indian traffic for trip times)
         /* try the next one */
       }
     }
-    console.log(ok ? `${ok}\n` : 'Mappls didn’t accept the key for routing. Copy the REST API key again (some accounts need approval first).\n')
+    console.log(ok ? `${ok}\n` : 'Mappls didn’t accept this key here. Run mappls.bat — it tries every Mappls sign-in (incl. Client ID/Secret) and shows why.\n')
   }
 }
 

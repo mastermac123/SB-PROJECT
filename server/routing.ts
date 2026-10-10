@@ -142,25 +142,28 @@ export function cityFloorMin(distanceKm: number, when = new Date()): number {
   return Math.round((distanceKm / kmh) * 60 + 2)
 }
 
-const olaCache = new Map<string, { at: number; min: number | null }>()
+const olaCache = new Map<string, { at: number; min: number | null; mappls: boolean }>()
 
 /** Take the slowest of the live-traffic sources: the route service (Google or TomTom), Ola Maps and Mappls. */
 async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): Promise<Route> {
   const when = departAt && departAt.getTime() > Date.now() ? departAt : new Date()
   let olaMin: number | null = null
+  let liveIndian = false
   // Ola and Mappls reflect traffic now, so only use them for trips starting within the hour.
   if (when.getTime() - Date.now() < 3600_000) {
     const k = `${key(a, b)}|${Math.floor(Date.now() / 120_000)}`
     const hit = olaCache.get(k)
-    if (hit) olaMin = hit.min
+    if (hit) ({ min: olaMin, mappls: liveIndian } = hit)
     else {
       const [ola, mappls] = await Promise.all([olaDirections(a, b), mapplsDirections(a, b)])
       olaMin = Math.max(ola?.durationMin ?? 0, mappls?.durationMin ?? 0) || null
+      liveIndian = !!mappls
       if (olaCache.size > 1000) olaCache.clear()
-      olaCache.set(k, { at: Date.now(), min: olaMin })
+      olaCache.set(k, { at: Date.now(), min: olaMin, mappls: liveIndian })
     }
   }
-  const best = Math.max(route.durationMin, olaMin ?? 0, cityFloorMin(route.distanceKm, when))
+  // Mappls has real live Indian traffic: when it answers, trust it instead of the typical-speed rule.
+  const best = Math.max(route.durationMin, olaMin ?? 0, liveIndian ? 0 : cityFloorMin(route.distanceKm, when))
   if (best <= route.durationMin) return route
   const freeFlow = Math.max(1, route.durationMin - (route.trafficDelayMin ?? 0))
   const delay = best - freeFlow
