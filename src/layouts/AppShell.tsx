@@ -42,6 +42,7 @@ export function AppShell({ nav }: { nav: boolean }) {
     )
   }
   if (user === null) return <Navigate to="/welcome" replace state={{ from: loc.pathname }} />
+  if (user.adminOnly) return <Navigate to="/admin" replace />
   if (!user.onboarded && loc.pathname !== '/onboarding') return <Navigate to="/onboarding" replace />
   if (user.onboarded && loc.pathname === '/onboarding') return <Navigate to="/home" replace />
 

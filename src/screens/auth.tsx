@@ -30,7 +30,7 @@ export function Splash() {
 
   useEffect(() => {
     if (!minDone || user === undefined) return
-    nav(user ? (user.onboarded ? '/home' : '/onboarding') : '/welcome', { replace: true })
+    nav(user ? (user.adminOnly ? '/admin' : user.onboarded ? '/home' : '/onboarding') : '/welcome', { replace: true })
   }, [minDone, user, nav])
 
   const path = 'M 20 60 C 70 60 80 20 130 20 S 190 50 240 30'
@@ -232,6 +232,8 @@ export function Login() {
   const signup = (loc.state as { mode?: string } | null)?.mode === 'signup'
   const from = (loc.state as { from?: string } | null)?.from
   const domain = config.data?.allowedDomain ?? 'vit.edu.in'
+  // Signing in for the admin dashboard: the admin email may be outside the college domain (the server checks it).
+  const forAdmin = !!from?.startsWith('/admin')
 
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
@@ -239,13 +241,13 @@ export function Login() {
   const [formError, setFormError] = useState<string | null>(() => new URLSearchParams(loc.search).get('error'))
   const [loading, setLoading] = useState(false)
 
-  if (user) return <Navigate to={user.onboarded ? from ?? '/home' : '/onboarding'} replace />
+  if (user) return <Navigate to={forAdmin || user.adminOnly ? from ?? '/admin' : user.onboarded ? from ?? '/home' : '/onboarding'} replace />
 
-  const done = (_isNew: boolean, onboarded: boolean) => nav(onboarded ? from ?? '/home' : '/onboarding', { replace: true })
+  const done = (_isNew: boolean, onboarded: boolean) => nav(forAdmin ? from! : onboarded ? from ?? '/home' : '/onboarding', { replace: true })
 
   async function sendCode(e?: FormEvent) {
     e?.preventDefault()
-    const err = validateCollegeEmail(email, domain)
+    const err = forAdmin ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? null : 'Enter a valid email address') : validateCollegeEmail(email, domain)
     setError(err)
     if (err) return
     setLoading(true)
@@ -273,7 +275,7 @@ export function Login() {
               <ArrowRight style={{ transform: 'rotate(180deg)' }} />
             </button>
           ) : (
-            <BackButton to="/welcome" />
+            <BackButton to={forAdmin ? '/admin' : '/welcome'} />
           )}
           <Logo height={24} className="only-mobile" />
           <span style={{ width: 40 }} className="only-mobile" />
@@ -284,9 +286,9 @@ export function Login() {
         {step === 'email' ? (
           <motion.div key="email" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
             <div className="auth__title">
-              <span className="t-overline t-primary">{signup ? 'Join RideSync' : 'Welcome back'}</span>
-              <h1 className="t-h1">{signup ? 'Create your account' : 'Log in to RideSync'}</h1>
-              <p className="t-body t-muted">Your campus. Your route. Your ride.</p>
+              <span className="t-overline t-primary">{forAdmin ? 'RideSync Admin' : signup ? 'Join RideSync' : 'Welcome back'}</span>
+              <h1 className="t-h1">{forAdmin ? 'Admin sign in' : signup ? 'Create your account' : 'Log in to RideSync'}</h1>
+              <p className="t-body t-muted">{forAdmin ? 'For the RideSync admin email only.' : 'Your campus. Your route. Your ride.'}</p>
             </div>
             <div className="stack gap-4">
               {formError && <Notice tone="error">{formError}</Notice>}
@@ -294,17 +296,17 @@ export function Login() {
               {cfg?.emailLogin && (
                 <form className="stack gap-3" onSubmit={sendCode} noValidate>
                   <Field
-                    label="VIT email"
+                    label={forAdmin ? 'Admin email' : 'VIT email'}
                     type="email"
                     inputMode="email"
                     autoComplete="email"
                     autoFocus
-                    placeholder={`firstname.lastname@${domain}`}
+                    placeholder={forAdmin ? 'admin@example.com' : `firstname.lastname@${domain}`}
                     leading={<Mail />}
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value)
-                      if (error) setError(validateCollegeEmail(e.target.value, domain))
+                      if (error) setError(forAdmin ? null : validateCollegeEmail(e.target.value, domain))
                     }}
                     error={error}
                   />
@@ -313,7 +315,7 @@ export function Login() {
                   </Button>
                   <p className="row row--top gap-2 t-caption t-muted" style={{ fontWeight: 400, margin: 0 }}>
                     <ShieldCheck size={14} style={{ flex: 'none', marginTop: 1 }} />
-                    No password to remember. We email a 6-digit code to your @{domain} inbox each time you sign in.
+                    No password to remember. We email a 6-digit code to {forAdmin ? 'your admin inbox' : `your @${domain} inbox`} each time you sign in.
                   </p>
                 </form>
               )}
@@ -327,7 +329,7 @@ export function Login() {
               )}
               {cfg?.devLogin && <DevLogin domain={domain} onDone={done} />}
             </div>
-            <p className="auth__switch">
+            <p className="auth__switch" hidden={forAdmin}>
               {signup ? 'Already on RideSync?' : 'New to RideSync?'}{' '}
               <button type="button" className="link-btn" onClick={switchMode}>
                 {signup ? 'Log in' : 'Create account'}

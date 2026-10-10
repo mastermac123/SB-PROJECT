@@ -114,7 +114,7 @@ function AdminSignIn({ from }: { from: string }) {
         <ShieldCheck />
       </span>
       <h1 className="t-h2">RideSync Admin</h1>
-      <p className="t-body t-muted">See rides, bookings, cancellations and students in one place, and approve student ID cards. Sign in with your admin @vit.edu.in email.</p>
+      <p className="t-body t-muted">See rides, bookings, cancellations and students in one place, and approve student ID cards. Sign in with your admin email.</p>
       <Button size="lg" block onClick={() => nav('/login', { state: { from } })}>
         Sign in as admin
       </Button>

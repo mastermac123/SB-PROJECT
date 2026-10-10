@@ -275,6 +275,19 @@ describe('safety', () => {
     expect(users[0]).toMatchObject({ email: 'ravi.k@vit.edu.in', idStatus: 'verified' })
   })
 
+  it('lets an admin with a non-college email use the dashboard only', async () => {
+    const { env } = await import('../env')
+    env.adminEmails.push('owner.person@gmail.com')
+    expect((await login('random.person@gmail.com')).res.status).toBe(403)
+    const { agent: owner, res } = await login('Owner.Person@gmail.com')
+    expect(res.status).toBe(200)
+    expect(res.body.user).toMatchObject({ isAdmin: true, adminOnly: true })
+    expect((await owner.get('/api/admin/stats')).status).toBe(200)
+    expect((await owner.get('/api/rides/feed')).status).toBe(403)
+    // Not counted or listed as a student.
+    expect((await owner.get('/api/admin/users?q=owner')).body).toHaveLength(0)
+  })
+
   it('locks the PIN after 5 wrong tries and alerts the rider', async () => {
     const d = (await login('pin.driver@vit.edu.in')).agent
     await d.patch('/api/me').set(H).send({ phone: '9876533320', studentId: 'VIT3320', onboarded: true })

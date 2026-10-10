@@ -62,6 +62,8 @@ export type User = PublicUser & {
   idNote?: string
   /** Can approve student ID cards. */
   isAdmin?: boolean
+  /** Admin with a non-college email: dashboard only, no rides. */
+  adminOnly?: boolean
 }
 
 export type IdStatus = 'none' | 'pending' | 'verified' | 'rejected'

@@ -1471,10 +1471,10 @@ api.get(
     const offered = perDay(`SELECT ${day.replace('%s', 'created_at')} d, COUNT(*) n FROM rides WHERE created_at >= ? GROUP BY d`)
     return {
       users: {
-        total: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0`),
-        onboarded: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND onboarded = 1`),
+        total: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND email LIKE ?`, `%@${env.allowedDomain}`),
+        onboarded: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND onboarded = 1 AND email LIKE ?`, `%@${env.allowedDomain}`),
         drivers: count(`SELECT COUNT(*) n FROM vehicles`),
-        newThisWeek: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND created_at >= ?`, since(7)),
+        newThisWeek: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND created_at >= ? AND email LIKE ?`, since(7), `%@${env.allowedDomain}`),
         verified: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'verified'`),
         pendingIds: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'pending'`),
         rejectedIds: count(`SELECT COUNT(*) n FROM users WHERE deleted = 0 AND id_status = 'rejected'`),
@@ -1552,8 +1552,9 @@ api.get(
       `SELECT u.*, (SELECT COUNT(*) FROM rides WHERE driver_id = u.id) offered,
               (SELECT COUNT(*) FROM bookings WHERE rider_id = u.id AND status = 'completed') taken,
               (SELECT COUNT(*) FROM bookings WHERE rider_id = u.id AND status = 'cancelled' AND cancelled_by = 'rider') cancels
-       FROM users u WHERE u.deleted = 0 AND (LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(u.student_id) LIKE ?)
+       FROM users u WHERE u.deleted = 0 AND u.email LIKE ? AND (LOWER(u.name) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(u.student_id) LIKE ?)
        ORDER BY u.created_at DESC LIMIT 100`,
+      `%@${env.allowedDomain}`,
       q,
       q,
       q,

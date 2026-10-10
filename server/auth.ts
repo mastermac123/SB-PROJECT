@@ -2,6 +2,9 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import type { NextFunction, Request, Response } from 'express'
 import { OAuth2Client } from 'google-auth-library'
 import { isCollegeEmail } from '../src/lib/validation'
+
+/** College students, plus admin emails from ADMIN_EMAILS (which may be any address, e.g. Gmail). */
+const canSignIn = (email: string) => isCollegeEmail(email, env.allowedDomain) || env.adminEmails.includes(email.trim().toLowerCase())
 import { one, run, type Row } from './db'
 import { env, anyMailConfigured } from './env'
 import { HttpError, newId, notify, nowIso } from './logic'
@@ -79,6 +82,7 @@ export function requireUser(req: Request, _res: Response, next: NextFunction) {
 /** Account must have finished onboarding (phone + student ID) before using rides. */
 export function requireOnboarded(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) return next(new HttpError(401, 'Please log in to continue.'))
+  if (!isCollegeEmail(String(req.user.email), env.allowedDomain)) return next(new HttpError(403, `This admin account can only use the admin dashboard. Students sign in with @${env.allowedDomain}.`))
   if (!Number(req.user.onboarded)) return next(new HttpError(403, 'Finish setting up your profile first.'))
   next()
 }
@@ -99,7 +103,7 @@ function nameFromEmail(email: string) {
 /** Find or create the account for a verified college email. */
 export function upsertUser(emailRaw: string, profile: { name?: string; photo?: string } = {}) {
   const email = emailRaw.trim().toLowerCase()
-  if (!isCollegeEmail(email, env.allowedDomain)) throw new HttpError(403, `Only @${env.allowedDomain} college accounts can use RideSync.`)
+  if (!canSignIn(email)) throw new HttpError(403, `Only @${env.allowedDomain} college accounts can use RideSync.`)
   const existing = one(`SELECT * FROM users WHERE email = ?`, email)
   if (existing) {
     if (Number(existing.deleted)) throw new HttpError(403, 'This account was deleted. Contact support to restore it.')
@@ -115,7 +119,7 @@ export function upsertUser(emailRaw: string, profile: { name?: string; photo?: s
     profile.photo ?? null,
     nowIso(),
   )
-  notify(id, 'system', 'Welcome to RideSync', `Your @${env.allowedDomain} email is verified. You’re part of the VIT community on RideSync.`)
+  if (isCollegeEmail(email, env.allowedDomain)) notify(id, 'system', 'Welcome to RideSync', `Your @${env.allowedDomain} email is verified. You’re part of the VIT community on RideSync.`)
   return { user: one(`SELECT * FROM users WHERE id = ?`, id)!, isNew: true }
 }
 
@@ -133,7 +137,7 @@ export async function verifyGoogle(credential: string) {
     throw new HttpError(401, 'Google sign-in failed. Please try again.')
   }
   if (!payload?.email || !payload.email_verified) throw new HttpError(401, 'Your Google account email isn’t verified.')
-  if (!isCollegeEmail(payload.email, env.allowedDomain))
+  if (!canSignIn(payload.email))
     throw new HttpError(403, `That’s ${payload.email}. Sign in with your @${env.allowedDomain} college Google account.`)
   return { email: payload.email, name: payload.name, photo: payload.picture }
 }
@@ -150,7 +154,7 @@ export const otpEnabled = () => anyMailConfigured() || !env.isProd
 export async function requestCode(emailRaw: string, ip: string) {
   if (!otpEnabled()) throw new HttpError(503, 'Email login isn’t configured on this server. Use Google sign-in.')
   const email = emailRaw.trim().toLowerCase()
-  if (!isCollegeEmail(email, env.allowedDomain)) throw new HttpError(403, `Only @${env.allowedDomain} college emails can use RideSync.`, 'email')
+  if (!canSignIn(email)) throw new HttpError(403, `Only @${env.allowedDomain} college emails can use RideSync.`, 'email')
 
   const hit = ipHits.get(ip)
   const now = Date.now()

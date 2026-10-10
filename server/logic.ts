@@ -104,6 +104,7 @@ export function meUser(row: Row): User {
     idStatus: ((row.id_status as string) || 'none') as User['idStatus'],
     idNote: (row.id_note as string) || undefined,
     isAdmin: isAdmin(String(row.email)) || undefined,
+    adminOnly: (isAdmin(String(row.email)) && !String(row.email).endsWith(`@${env.allowedDomain}`)) || undefined,
   }
 }
 
