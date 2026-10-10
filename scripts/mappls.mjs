@@ -12,6 +12,35 @@ const ask = (q) => {
   process.stdout.write(q)
   return new Promise((r) => (lines.length ? r(lines.shift()) : waiters.push(r))).then((a) => a.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ''))
 }
+/** Like ask(), but shows **** while typing so keys never appear on screen (or in screenshots). */
+const askSecret = async (q) => {
+  const { stdin, stdout } = process
+  if (!stdin.isTTY || lines.length || typeof stdin.setRawMode !== 'function') return ask(q)
+  stdout.write(q)
+  const saved = stdin.listeners('data')
+  stdin.removeAllListeners('data')
+  stdin.setRawMode(true)
+  stdin.resume()
+  const value = await new Promise((resolve) => {
+    let v = ''
+    stdin.on('data', (buf) => {
+      for (const ch of buf.toString('utf8')) {
+        if (ch === '\r' || ch === '\n') return resolve(v)
+        if (ch === '\u0003') process.exit(1)
+        if (ch === '\u007f' || ch === '\b') {
+          if (v) (v = v.slice(0, -1)), stdout.write('\b \b')
+          continue
+        }
+        if (ch >= ' ') (v += ch), stdout.write('*')
+      }
+    })
+  })
+  stdin.removeAllListeners('data')
+  stdin.setRawMode(false)
+  for (const l of saved) stdin.on('data', l)
+  stdout.write('\n')
+  return value.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '')
+}
 const ENV = '.env'
 const env = new Map()
 if (existsSync(ENV))
@@ -34,9 +63,9 @@ console.log('    • a "Client ID" and "Client Secret"        (two codes, for OA
 console.log('  Paste whichever you have. Press Enter to skip one. Also make sure the key has NO domain/IP')
 console.log('  restriction (or add your laptop), and that "Routing / Directions" is enabled for the project.\n')
 
-const key = await ask('  Static key / REST API key (Enter to skip): ')
+const key = await askSecret('  Static key / REST API key (Enter to skip): ')
 const id = await ask('  Client ID (Enter to skip): ')
-const secret = id ? await ask('  Client Secret: ') : ''
+const secret = id ? await askSecret('  Client Secret: ') : ''
 let tok = ''
 
 if (id && secret) {
