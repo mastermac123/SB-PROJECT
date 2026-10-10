@@ -226,6 +226,8 @@ How to get the key:
 3. Run **setup.bat**, answer `y` to **live traffic**, and paste the key. It shows the current VIT → Dadar time to prove it works.
 4. Restart start.bat. You should see `Live traffic (TomTom) works ✓`.
 
+**How trip times are worked out.** RideSync asks TomTom (live traffic) and, if you added an Ola Maps key, Ola Maps (built on Indian traffic data), and uses the **slower** of the two. It also never shows a time faster than realistic Mumbai speeds for that hour: about 15 km/h in the 8–11 AM and 5–9 PM rush, 20 km/h in the daytime and 26–34 km/h at night. A 3 km trip at noon shows at least 10 minutes, not TomTom's free-flow 4. Set `CITY_SPEED_FLOOR=off` in `.env` to turn the city-speed rule off.
+
 The free plan includes 2,500 route/ETA requests and 50,000 map tiles a day. RideSync reuses results for 2 minutes to stay within it. Without a key, routes use OSRM, which has no traffic.
 
 ## 3e. Android and iPhone apps (Flutter)

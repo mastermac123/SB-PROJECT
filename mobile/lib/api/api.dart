@@ -112,12 +112,13 @@ class Api {
     return (name: '${m['name']}', area: '${m['area']}');
   }
 
-  Future<LiveEta> eta(LatLngPoint from, LatLngPoint to, {bool route = false}) async => LiveEta.fromJson(_map(await get('/eta', {
+  Future<LiveEta> eta(LatLngPoint from, LatLngPoint to, {bool route = false, DateTime? departAt}) async => LiveEta.fromJson(_map(await get('/eta', {
         'fromLat': from.lat.toStringAsFixed(5),
         'fromLng': from.lng.toStringAsFixed(5),
         'toLat': to.lat.toStringAsFixed(5),
         'toLng': to.lng.toStringAsFixed(5),
         if (route) 'route': '1',
+        if (departAt != null) 'departAt': departAt.toUtc().toIso8601String(),
       })));
   String get trafficTileUrl => '$baseUrl/api/traffic/{z}/{x}/{y}.png';
   Future<RouteInfo> route(Place from, Place to) async => RouteInfo.fromJson(_map(await post('/route', {'from': from.toJson(), 'to': to.toJson()})));

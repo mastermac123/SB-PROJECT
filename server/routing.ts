@@ -2,7 +2,8 @@ import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '..
 import type { LatLng } from '../src/lib/types'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
-import { tomtomConfigured, tomtomRoute, type TrafficLevel, type TrafficSegment } from './traffic'
+import { olaDirections } from './landmarks'
+import { tomtomConfigured, tomtomRoute, trafficLevel, type TrafficLevel, type TrafficSegment } from './traffic'
 
 export type Route = {
   coords: LatLng[]
@@ -67,7 +68,47 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
   }
 }
 
+/**
+ * Slowest realistic city speed for the hour (Mumbai), so we never promise a trip faster than
+ * traffic allows even when a map service has no live data for that road.
+ * Set CITY_SPEED_FLOOR=off to disable.
+ */
+export function cityFloorMin(distanceKm: number, when = new Date()): number {
+  if (process.env.CITY_SPEED_FLOOR === 'off') return 0
+  const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(when))
+  const kmh = (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 15 : h >= 11 && h < 17 ? 20 : h >= 21 && h < 23 ? 26 : 34
+  return Math.round((distanceKm / kmh) * 60 + 1)
+}
+
+const olaCache = new Map<string, { at: number; min: number | null }>()
+
+/** Take the slowest of the map service, Ola Maps (Indian traffic) and the city-speed floor. */
+async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): Promise<Route> {
+  const when = departAt && departAt.getTime() > Date.now() ? departAt : new Date()
+  let olaMin: number | null = null
+  // Ola reflects traffic now, so only use it for trips starting within the hour.
+  if (when.getTime() - Date.now() < 3600_000) {
+    const k = `${key(a, b)}|${Math.floor(Date.now() / 120_000)}`
+    const hit = olaCache.get(k)
+    if (hit) olaMin = hit.min
+    else {
+      olaMin = (await olaDirections(a, b))?.durationMin ?? null
+      if (olaCache.size > 1000) olaCache.clear()
+      olaCache.set(k, { at: Date.now(), min: olaMin })
+    }
+  }
+  const best = Math.max(route.durationMin, olaMin ?? 0, cityFloorMin(route.distanceKm, when))
+  if (best <= route.durationMin) return route
+  const freeFlow = Math.max(1, route.durationMin - (route.trafficDelayMin ?? 0))
+  const delay = best - freeFlow
+  return { ...route, durationMin: best, trafficDelayMin: delay, traffic: trafficLevel(delay, freeFlow) }
+}
+
 export async function getRoute(a: LatLng, b: LatLng, opts: { departAt?: Date } = {}): Promise<Route> {
+  return realistic(await baseRoute(a, b, opts), a, b, opts.departAt)
+}
+
+async function baseRoute(a: LatLng, b: LatLng, opts: { departAt?: Date } = {}): Promise<Route> {
   const k = key(a, b)
   if (tomtomConfigured() && !googleConfigured()) {
     const lk = `${k}|${opts.departAt ? Math.round(opts.departAt.getTime() / 900_000) : 'now'}`

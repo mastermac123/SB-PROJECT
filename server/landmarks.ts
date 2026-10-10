@@ -1,6 +1,7 @@
 import type { Place } from '../src/lib/types'
 import { haversineKm } from '../src/lib/geo'
 import { env } from './env'
+import { decodePolyline } from './google'
 
 /**
  * Building and landmark names for a dropped pin, from services that know Indian
@@ -114,6 +115,40 @@ export async function tomtomNearby(lat: number, lng: number): Promise<PlaceName 
     return { name, area: [a.municipalitySubdivision || a.streetName, a.municipality].filter((s) => s && !name.includes(s)).join(', ') }
   } catch (e) {
     console.error('[ridesync] TomTom nearby places failed', (e as Error).message)
+    return null
+  }
+}
+
+/* ---- Ola Maps driving time (Indian traffic) ------------------------------------ */
+
+/**
+ * Driving time from Ola Maps, which is built on Indian road and traffic data — usually much
+ * closer to real Mumbai times than other free services. Null if unavailable.
+ */
+export async function olaDirections(a: { lat: number; lng: number }, b: { lat: number; lng: number }): Promise<{ durationMin: number; distanceKm: number; coords: { lat: number; lng: number }[] } | null> {
+  if (!env.olaKey) return null
+  try {
+    const res = await fetch(
+      `https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=full&traffic_metadata=false&api_key=${encodeURIComponent(env.olaKey)}`,
+      { method: 'POST', signal: AbortSignal.timeout(6000), headers: { 'X-Request-Id': `ridesync-${Date.now()}` } },
+    )
+    if (!res.ok) throw new Error(`ola directions ${res.status}`)
+    const j = (await res.json()) as { routes?: { overview_polyline?: string; legs?: { duration?: number | { value?: number }; distance?: number | { value?: number } }[] }[] }
+    const r = j.routes?.[0]
+    const legs = r?.legs ?? []
+    const num = (v: number | { value?: number } | undefined) => (typeof v === 'number' ? v : (v?.value ?? 0))
+    const seconds = legs.reduce((t, l) => t + num(l.duration), 0)
+    const meters = legs.reduce((t, l) => t + num(l.distance), 0)
+    if (!seconds || !meters) return null
+    let coords: { lat: number; lng: number }[] = []
+    try {
+      coords = r?.overview_polyline ? decodePolyline(r.overview_polyline) : []
+    } catch {
+      coords = []
+    }
+    return { durationMin: Math.max(1, Math.round(seconds / 60)), distanceKm: meters / 1000, coords }
+  } catch (e) {
+    console.error('[ridesync] Ola Maps directions failed', (e as Error).message)
     return null
   }
 }

@@ -2,6 +2,7 @@ import request from 'supertest'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
+process.env.CITY_SPEED_FLOOR = 'off'
 process.env.DEV_LOGIN = 'true'
 process.env.OSRM_URL = 'http://127.0.0.1:9'
 process.env.GOOGLE_MAPS_API_KEY = 'AIza-test-key'

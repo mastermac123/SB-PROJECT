@@ -17,20 +17,21 @@ export type TripEta = {
 }
 
 /**
- * Trip time and arrival, with live traffic when the trip starts within 90 minutes or is
- * under way (refreshed every 2 minutes). Falls back to the planned route time.
+ * Trip time and arrival from the server: live traffic for trips starting soon or under way,
+ * typical traffic for that hour for later trips (refreshed every 2 minutes).
+ * Falls back to the planned route time.
  */
 export function useTripEta({ from, to, departAt, plannedMin, distanceKm, live }: TripEtaInput): TripEta {
   const soon = live || new Date(departAt).getTime() - Date.now() < 90 * 60_000
+  const later = !soon && new Date(departAt).getTime() > Date.now()
   const [eta, setEta] = useState<LiveEta | null>(null)
   // ~1 km steps for a moving car, so live GPS doesn't trigger a lookup on every update.
   const key = `${from.lat.toFixed(2)},${from.lng.toFixed(2)}|${to.lat.toFixed(4)},${to.lng.toFixed(4)}`
 
   useEffect(() => {
-    if (!soon) return
     let stop = false
     const load = () =>
-      liveEta(from, to, { route: true })
+      liveEta(from, to, { route: soon, departAt: later ? departAt : undefined })
         .then((r) => !stop && setEta(r))
         .catch(() => {})
     void load()
@@ -40,7 +41,7 @@ export function useTripEta({ from, to, departAt, plannedMin, distanceKm, live }:
       window.clearInterval(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, soon])
+  }, [key, soon, departAt])
 
   const minutes = eta?.durationMin ?? plannedMin
   const start = live ? Date.now() : Math.max(Date.now(), new Date(departAt).getTime())

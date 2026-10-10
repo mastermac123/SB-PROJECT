@@ -380,7 +380,9 @@ api.get(
     const from = { lat: n(req.query.fromLat), lng: n(req.query.fromLng) }
     const to = { lat: n(req.query.toLat), lng: n(req.query.toLng) }
     if (![from.lat, from.lng, to.lat, to.lng].every(Number.isFinite)) throw new HttpError(400, 'Bad coordinates.')
-    const r = await getRoute(from, to)
+    // A later departure uses the typical traffic for that time.
+    const at = typeof req.query.departAt === 'string' ? new Date(req.query.departAt) : undefined
+    const r = await getRoute(from, to, { departAt: at && !Number.isNaN(at.getTime()) && at.getTime() > Date.now() + 10 * 60_000 ? at : undefined })
     return {
       durationMin: r.durationMin,
       distanceKm: Math.round(r.distanceKm * 10) / 10,

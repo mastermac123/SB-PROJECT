@@ -37,9 +37,10 @@ class _TripEtaBuilderState extends State<TripEtaBuilder> {
   // ~1 km steps for a moving car, so live GPS doesn't trigger a lookup on every update.
   String get _k => '${widget.from.lat.toStringAsFixed(2)},${widget.from.lng.toStringAsFixed(2)}|${widget.to.lat},${widget.to.lng}';
 
+  // Live traffic for trips starting soon; typical traffic for that hour for later ones.
   void _load() {
-    if (!_soon) return;
-    context.read<Session>().api.eta(widget.from, widget.to, route: true).then((r) {
+    final later = !_soon && widget.departAt.isAfter(DateTime.now());
+    context.read<Session>().api.eta(widget.from, widget.to, route: _soon, departAt: later ? widget.departAt : null).then((r) {
       if (mounted) setState(() => _eta = r);
     }).catchError((_) {});
   }

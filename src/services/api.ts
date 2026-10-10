@@ -380,8 +380,10 @@ export type LiveEta = {
   segments?: TrafficSegment[]
 }
 /** Driving time between two points, including live traffic when the server has it. */
-export const liveEta = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, opts: { route?: boolean } = {}) =>
-  get<LiveEta>(`/eta?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}${opts.route ? '&route=1' : ''}`)
+export const liveEta = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, opts: { route?: boolean; departAt?: string } = {}) =>
+  get<LiveEta>(
+    `/eta?fromLat=${from.lat.toFixed(5)}&fromLng=${from.lng.toFixed(5)}&toLat=${to.lat.toFixed(5)}&toLng=${to.lng.toFixed(5)}${opts.route ? '&route=1' : ''}${opts.departAt ? `&departAt=${encodeURIComponent(opts.departAt)}` : ''}`,
+  )
 
 export const searchPlacesRemote = (q: string, session?: string) =>
   get<Place[]>(`/places?q=${encodeURIComponent(q)}${session ? `&s=${encodeURIComponent(session)}` : ''}`)
