@@ -1,7 +1,7 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
-import { haversineKm } from '../src/lib/geo'
+import { haversineKm, projectOnPolyline } from '../src/lib/geo'
 import { desiredTime, scoreRide, suggestFarePerSeat } from '../src/lib/matching'
 import type {
   BookingDetail,
@@ -690,6 +690,7 @@ api.post(
     run(`UPDATE rides SET driver_location = ? WHERE id = ?`, JSON.stringify(location), r.id)
     const riders = all<{ rider_id: string }>(`SELECT rider_id FROM bookings WHERE ride_id = ? AND status IN ('driver_arriving','driver_arrived','in_progress')`, r.id).map((x) => x.rider_id)
     emit(riders, { type: 'location', rideId: String(r.id), location })
+    tripAlerts(r, location)
   }),
 )
 
@@ -1619,3 +1620,76 @@ api.post(
     emit([String(r.driver_id)], { type: 'riderLocation', rideId: String(r.id), bookingId: String(b.id), location })
   }),
 )
+
+/* ---- Trip alerts: nearly there, wait timer / no-show, off-route, reminders --- */
+
+/** Kilometres from a point to a route line (approximate, fine at city scale). */
+function kmFromRoute(p: { lat: number; lng: number }, line: { lat: number; lng: number }[]) {
+  if (line.length < 2) return line.length ? haversineKm(p, line[0]) : 0
+  return projectOnPolyline(p, line).distanceKm
+}
+
+/**
+ * On every driver location update:
+ *  • driver within ~800 m (≈2 min in city traffic) of a waiting rider → "Sara is 2 min away" (once)
+ *  • a rider is in the car and the car is >1.5 km off the planned route for 3 updates in a row →
+ *    "Your car has left the usual route — are you OK?" with SOS (at most every 10 min)
+ */
+function tripAlerts(r: Row, at: DriverLocation) {
+  const driver = first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'Your driver'))
+  const v = vehicleFor(String(r.driver_id))
+  const route = JSON.parse(String(r.route)) as { lat: number; lng: number }[]
+  for (const b of all(`SELECT * FROM bookings WHERE ride_id = ? AND status IN ('driver_arriving','in_progress')`, r.id)) {
+    if (b.status === 'driver_arriving' && !Number(b.near_notified)) {
+      const target = (b.rider_location ? JSON.parse(String(b.rider_location)) : JSON.parse(String(b.pickup))) as { lat: number; lng: number }
+      if (haversineKm(at, target) <= 0.8) {
+        run(`UPDATE bookings SET near_notified = 1 WHERE id = ?`, b.id)
+        notify(String(b.rider_id), 'arriving', `${driver} is about 2 min away`, `Head to your pickup. Look for a ${v?.color ?? ''} ${v?.model ?? 'car'} · ${v?.plate ?? ''}.`, `/live/${b.id}`)
+      }
+    }
+    if (b.status === 'in_progress') {
+      // The rider's own leg: from where they were picked up to their drop, along the ride's route.
+      const off = kmFromRoute(at, route) > 1.5 && kmFromRoute(at, [JSON.parse(String(b.pickup)), JSON.parse(String(b.drop_place))]) > 1.5
+      const strikes = off ? Number(b.off_route_strikes) + 1 : 0
+      const recent = b.off_route_alerted_at && Date.now() - new Date(String(b.off_route_alerted_at)).getTime() < 10 * 60_000
+      if (strikes >= 3 && !recent) {
+        run(`UPDATE bookings SET off_route_strikes = 0, off_route_alerted_at = ? WHERE id = ?`, nowIso(), b.id)
+        notify(String(b.rider_id), 'cancelled', 'Your car has left the usual route', `Are you OK? If anything feels wrong, open the trip and tap SOS (112 or campus security). ${v?.plate ?? ''}`, `/live/${b.id}`)
+      } else run(`UPDATE bookings SET off_route_strikes = ? WHERE id = ?`, strikes, b.id)
+    }
+  }
+}
+
+/** Driver waited 5+ minutes after arriving and the rider never came. */
+api.post(
+  '/bookings/:id/no-show',
+  requireOnboarded,
+  h((req) => {
+    const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    if (role !== 'driver') throw new HttpError(403, 'Only the driver can do this.')
+    if (b.status !== 'driver_arrived' || !b.arrived_at) throw new HttpError(409, 'Mark “I’ve arrived” first.')
+    const waited = (Date.now() - new Date(String(b.arrived_at)).getTime()) / 60_000
+    if (waited < 5) throw new HttpError(409, `Please wait ${Math.ceil(5 - waited)} more min — riders get 5 minutes after you arrive.`)
+    run(`UPDATE bookings SET status = 'cancelled', cancelled_by = 'rider', cancel_reason = 'Didn’t come to the pickup (no-show)', rider_location = NULL, updated_at = ? WHERE id = ?`, nowIso(), b.id)
+    notify(String(b.rider_id), 'cancelled', `${first(String(me(req).name))} couldn’t wait any longer`, 'You didn’t reach the pickup within 5 minutes, so the driver continued. No-shows lower your reliability score.', `/trip/${b.id}`)
+    sync(rideParticipants(String(r.id)))
+  }),
+)
+
+/** 15 minutes before a ride: remind confirmed riders and the driver. Runs every minute. */
+export function sendRideReminders(now = Date.now()) {
+  const from = new Date(now + 13 * 60_000).toISOString()
+  const to = new Date(now + 16 * 60_000).toISOString()
+  for (const r of all(`SELECT * FROM rides WHERE status = 'scheduled' AND depart_at BETWEEN ? AND ?`, from, to)) {
+    const riders = all(`SELECT * FROM bookings WHERE ride_id = ? AND status = 'confirmed' AND reminded = 0`, r.id)
+    const origin = JSON.parse(String(r.origin)).name as string
+    for (const b of riders) {
+      run(`UPDATE bookings SET reminded = 1 WHERE id = ?`, b.id)
+      notify(String(b.rider_id), 'system', 'Your ride leaves in 15 min', `Be at ${JSON.parse(String(b.pickup)).name} on time. Your driver can see your live location from now until pickup.`, `/trip/${b.id}`)
+    }
+    if (!Number(r.reminded) && count(`SELECT COUNT(*) n FROM bookings WHERE ride_id = ? AND status = 'confirmed'`, r.id) > 0) {
+      run(`UPDATE rides SET reminded = 1 WHERE id = ?`, r.id)
+      notify(String(r.driver_id), 'system', 'Your ride starts in 15 min', `Leave from ${origin} and tap Start ride so riders can track you.`, `/drive/${r.id}`)
+    }
+  }
+}

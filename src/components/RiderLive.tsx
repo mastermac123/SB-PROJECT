@@ -61,3 +61,17 @@ export function RiderLiveBar({ driver, share }: { driver: string; share: ReturnT
     </div>
   )
 }
+
+/** Seconds since `since`, ticking every second (wait timer at pickup). */
+export function useWaited(since?: string) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!since) return
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [since])
+  return since ? Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000)) : 0
+}
+
+export const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+export const FREE_WAIT_S = 5 * 60

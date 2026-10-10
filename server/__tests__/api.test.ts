@@ -319,6 +319,61 @@ describe('safety', () => {
     expect((await r.post(`/api/bookings/${id}/rider-location`).set(H).send(here)).status).toBe(409)
   })
 
+  it('alerts: driver 2 min away, 15-min reminder, wait timer / no-show, car off route', async () => {
+    const { run } = await import('../db')
+    const { sendRideReminders } = await import('../routes')
+    const d = (await login('alert.driver@vit.edu.in')).agent
+    await d.patch('/api/me').set(H).send({ phone: '9876533340', studentId: 'VIT3340', onboarded: true })
+    await d.put('/api/me/vehicle').set(H).send({ make: 'Tata', model: 'Punch', color: 'Blue', plate: 'MH01ZZ5555', seats: 3, fuel: 'petrol' })
+    const mk = async (email: string, phone: string, sid: string) => {
+      const a = (await login(email)).agent
+      await a.patch('/api/me').set(H).send({ phone, studentId: sid, onboarded: true })
+      return a
+    }
+    const r1 = await mk('alert.r1@vit.edu.in', '9876533341', 'VIT3341')
+    const r2 = await mk('alert.r2@vit.edu.in', '9876533342', 'VIT3342')
+    const departAt = new Date(Date.now() + 13 * 3600_000).toISOString()
+    const rideId = (await d.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 50, maxDetourKm: 3, preferences: [] })).body.id
+    const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
+    const ids: string[] = []
+    for (const r of [r1, r2]) {
+      const id = (await r.post('/api/bookings').set(H).send({ rideId, query })).body.id
+      await d.post(`/api/bookings/${id}/respond`).set(H).send({ accept: true })
+      await r.post(`/api/bookings/${id}/pay`).set(H).send({ method: 'cash' })
+      ids.push(id)
+    }
+    const latest = async (a: typeof d) => (await a.get('/api/notifications')).body[0].title as string
+
+    // 15 minutes before: riders and driver are reminded (once).
+    sendRideReminders(new Date(departAt).getTime() - 15 * 60_000)
+    expect(await latest(r1)).toBe('Your ride leaves in 15 min')
+    expect(await latest(d)).toBe('Your ride starts in 15 min')
+    sendRideReminders(new Date(departAt).getTime() - 14 * 60_000)
+    expect((await r1.get('/api/notifications')).body.filter((n: { title: string }) => n.title === 'Your ride leaves in 15 min')).toHaveLength(1)
+
+    // Driver drives: far away → nothing; within 800 m → "about 2 min away" (once).
+    await d.post(`/api/rides/${rideId}/start`).set(H).send({})
+    await d.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.06, lng: 72.88 })
+    expect(await latest(r1)).not.toMatch(/2 min away/)
+    await d.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.0262, lng: 72.8711 })
+    expect(await latest(r1)).toMatch(/about 2 min away/)
+
+    // Rider 2 never comes: no-show only after waiting 5 minutes.
+    await d.post(`/api/bookings/${ids[1]}/arrived`).set(H).send({})
+    expect((await d.post(`/api/bookings/${ids[1]}/no-show`).set(H).send({})).status).toBe(409)
+    run(`UPDATE bookings SET arrived_at = ? WHERE id = ?`, new Date(Date.now() - 6 * 60_000).toISOString(), ids[1])
+    expect((await r2.post(`/api/bookings/${ids[1]}/no-show`).set(H).send({})).status).toBe(403)
+    expect((await d.post(`/api/bookings/${ids[1]}/no-show`).set(H).send({})).status).toBe(200)
+    expect((await r2.get(`/api/bookings/${ids[1]}`)).body.booking).toMatchObject({ status: 'cancelled', cancelledBy: 'rider' })
+
+    // Rider 1 picked up; the car goes far off route 3 times → "left the usual route".
+    await d.post(`/api/bookings/${ids[0]}/arrived`).set(H).send({})
+    const pin = (await r1.get(`/api/bookings/${ids[0]}`)).body.ridePin
+    await d.post(`/api/bookings/${ids[0]}/picked-up`).set(H).send({ pin })
+    for (let i = 0; i < 3; i++) await d.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.0, lng: 73.05 + i * 0.01 })
+    expect(await latest(r1)).toBe('Your car has left the usual route')
+  })
+
   it('locks the PIN after 5 wrong tries and alerts the rider', async () => {
     const d = (await login('pin.driver@vit.edu.in')).agent
     await d.patch('/api/me').set(H).send({ phone: '9876533320', studentId: 'VIT3320', onboarded: true })

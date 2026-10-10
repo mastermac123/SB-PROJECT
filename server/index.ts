@@ -5,9 +5,18 @@ import { checkTomTom } from './traffic'
 import { checkMappls } from './mappls'
 import { razorpayConfigured } from './env'
 import { checkRazorpay } from './razorpay'
+import { sendRideReminders } from './routes'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
 const app = createApp()
+// 15-minute ride reminders.
+setInterval(() => {
+  try {
+    sendRideReminders()
+  } catch (e) {
+    console.error('[ridesync] reminders failed', (e as Error).message)
+  }
+}, 60_000)
 const server = app.listen(env.port, () => {
   console.log(`[ridesync] API listening on http://localhost:${env.port}`)
   console.log(envFile.found ? `[ridesync] settings: ${envFile.path}` : `[ridesync] ⚠ No settings file (.env) in ${process.cwd()} — run setup.bat in THIS folder to set up email, payments and maps.`)

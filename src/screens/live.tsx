@@ -16,7 +16,7 @@ import type { LatLng } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { ApiError, Q, bookings, liveEta, useDriverLocation, useMe, useQuery, type BookingDetail, type LiveEta } from '@/services/api'
 import { RidePinCard, useShareTrip } from '@/components/Safety'
-import { RiderLiveBar, useShareRiderLocation } from '@/components/RiderLive'
+import { FREE_WAIT_S, RiderLiveBar, mmss, useShareRiderLocation, useWaited } from '@/components/RiderLive'
 import { paymentLabel, SuccessMark } from './trip'
 
 // Configure per campus before launch; hidden when not set so we never show an unverified number.
@@ -65,6 +65,7 @@ export function LiveRide() {
   const live = q.data && ['driver_arriving', 'in_progress'].includes(q.data.booking.status) ? (q.data.booking.status === 'in_progress' ? q.data.booking.drop : q.data.booking.pickup) : null
   const etaInfo = useLiveEta(loc ?? null, live)
   const shareTrip = useShareTrip(bookingId ?? '')
+  const waited = useWaited(q.data?.booking.status === 'driver_arrived' ? q.data.booking.arrivedAt : undefined)
   const shareMe = useShareRiderLocation(bookingId ?? '', !!q.data && q.data.role === 'rider' && ['driver_arriving', 'driver_arrived'].includes(q.data.booking.status))
 
   if (q.loading)
@@ -100,7 +101,13 @@ export function LiveRide() {
     booking.status === 'driver_arriving'
       ? { title: eta ? `Arriving in ${eta} min` : `${name} is on the way`, sub: loc ? `${name} is heading to ${booking.pickup.name}` : `Waiting for ${name}’s live location…` }
       : booking.status === 'driver_arrived'
-        ? { title: `${name} has arrived`, sub: `Look for a ${v.color.toLowerCase()} ${v.model} · ${v.plate}` }
+        ? {
+            title: `${name} has arrived`,
+            sub:
+              waited < FREE_WAIT_S
+                ? `Waiting ${mmss(waited)} · please reach within ${mmss(FREE_WAIT_S - waited)}. Look for a ${v.color.toLowerCase()} ${v.model} · ${v.plate}`
+                : `${name} has waited ${mmss(waited)} — hurry, or call so they don’t leave. ${v.color} ${v.model} · ${v.plate}`,
+          }
         : { title: eta ? `${eta} min to ${booking.drop.name}` : `On the way to ${booking.drop.name}`, sub: 'Enjoy the ride. Share your trip with someone you trust.' }
 
 

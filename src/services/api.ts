@@ -480,6 +480,7 @@ export const bookings = {
   cancel: (id: string, reason: string) => mutate(post(`/bookings/${id}/cancel`, { reason })),
   arrived: (id: string) => mutate(post(`/bookings/${id}/arrived`)),
   pickedUp: (id: string, pin?: string) => mutate(post(`/bookings/${id}/picked-up`, { pin })),
+  noShow: (id: string) => mutate(post(`/bookings/${id}/no-show`)),
   riderLocation: (id: string, lat: number, lng: number, accuracy: number | null) => post(`/bookings/${id}/rider-location`, { lat, lng, accuracy }),
   share: (id: string) => post<{ url: string; text: string; local: boolean }>(`/bookings/${id}/share`),
   dropped: (id: string) => mutate(post(`/bookings/${id}/dropped`)),

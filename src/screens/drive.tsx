@@ -26,6 +26,7 @@ import { ApiError, Q, bookings, rides, routePreview, saveVehicle, useMe, useQuer
 import { defaultQuery } from '@/state/search'
 import { PREF_OPTIONS } from './find'
 import { shareLink } from './rideDetails'
+import { FREE_WAIT_S, mmss, useWaited } from '@/components/RiderLive'
 import { paymentLabel } from './trip'
 
 const DRIVER_PREFS: { value: RidePreference; icon: React.ReactNode }[] = [...PREF_OPTIONS.filter((p) => p.value !== 'minimal_detour'), { value: 'ac', icon: <Snowflake /> }, { value: 'music_ok', icon: <Music /> }]
@@ -643,6 +644,7 @@ function RiderRow({ b, liveAt, live, done, busy, onStep, onChat, onRemove }: { b
   const name = firstName(b.rider.name)
   const celebrate = useCelebrate()
   const [pinOpen, setPinOpen] = useState(false)
+  const waited = useWaited(b.status === 'driver_arrived' ? b.arrivedAt : undefined)
   const statusBadge =
     b.status === 'accepted' ? (
       <Badge tone="warning">Awaiting payment</Badge>
@@ -666,6 +668,12 @@ function RiderRow({ b, liveAt, live, done, busy, onStep, onChat, onRemove }: { b
           <span className="t-sm t-muted truncate">
             {b.pickup.name} → {b.drop.name}
           </span>
+          {b.status === 'driver_arrived' && b.arrivedAt && (
+            <span className="t-sm t-strong" style={{ color: waited >= FREE_WAIT_S ? 'var(--error-600)' : 'var(--warning-600)' }}>
+              Waiting {mmss(waited)}
+              {waited < FREE_WAIT_S ? ` · free wait ends in ${mmss(FREE_WAIT_S - waited)}` : ' · you can mark them as no-show'}
+            </span>
+          )}
           {liveAt && b.status !== 'in_progress' && (
             <span className="t-sm row gap-1" style={{ color: 'var(--success-600)' }}>
               <LocateFixed style={{ width: 14, height: 14 }} />
@@ -715,6 +723,11 @@ function RiderRow({ b, liveAt, live, done, busy, onStep, onChat, onRemove }: { b
           {live && b.status === 'driver_arriving' && (
             <Button size="sm" loading={busy} onClick={() => onStep(() => bookings.arrived(b.id))}>
               I’ve arrived
+            </Button>
+          )}
+          {live && b.status === 'driver_arrived' && waited >= FREE_WAIT_S && (
+            <Button size="sm" variant="danger-ghost" loading={busy} onClick={() => onStep(() => bookings.noShow(b.id), `${name} marked as no-show`)}>
+              Didn’t come
             </Button>
           )}
           {live && b.status === 'driver_arrived' && (
