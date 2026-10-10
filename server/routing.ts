@@ -3,6 +3,7 @@ import type { LatLng } from '../src/lib/types'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
 import { olaDirections } from './landmarks'
+import { mapplsDirections } from './mappls'
 import { tomtomConfigured, tomtomRoute, trafficLevel, type TrafficLevel, type TrafficSegment } from './traffic'
 
 export type Route = {
@@ -81,17 +82,18 @@ export function cityFloorMin(distanceKm: number, when = new Date()): number {
 
 const olaCache = new Map<string, { at: number; min: number | null }>()
 
-/** Take the slower of the live-traffic sources: the route service (Google or TomTom) and Ola Maps. */
+/** Take the slowest of the live-traffic sources: the route service (Google or TomTom), Ola Maps and Mappls. */
 async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): Promise<Route> {
   const when = departAt && departAt.getTime() > Date.now() ? departAt : new Date()
   let olaMin: number | null = null
-  // Ola reflects traffic now, so only use it for trips starting within the hour.
+  // Ola and Mappls reflect traffic now, so only use them for trips starting within the hour.
   if (when.getTime() - Date.now() < 3600_000) {
     const k = `${key(a, b)}|${Math.floor(Date.now() / 120_000)}`
     const hit = olaCache.get(k)
     if (hit) olaMin = hit.min
     else {
-      olaMin = (await olaDirections(a, b))?.durationMin ?? null
+      const [ola, mappls] = await Promise.all([olaDirections(a, b), mapplsDirections(a, b)])
+      olaMin = Math.max(ola?.durationMin ?? 0, mappls?.durationMin ?? 0) || null
       if (olaCache.size > 1000) olaCache.clear()
       olaCache.set(k, { at: Date.now(), min: olaMin })
     }

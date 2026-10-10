@@ -2,6 +2,7 @@ import { createApp, env } from './app'
 import { verifyMail } from './mail'
 import { checkMapTiler } from './maps'
 import { checkTomTom } from './traffic'
+import { checkMappls } from './mappls'
 import { razorpayConfigured } from './env'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 
@@ -23,12 +24,16 @@ const server = app.listen(env.port, () => {
     if (r === 'rejected') console.log('[ridesync] ⚠ MapTiler rejected the key in .env (MAPTILER_KEY) — using the free OpenStreetMap map instead. Copy the key again from cloud.maptiler.com → API keys and run setup.bat.')
     if (r === 'ok') console.log('[ridesync] MapTiler key works ✓')
   })
+  void checkMappls().then((r) => {
+    if (r) console.log(`[ridesync] Mappls live traffic works ✓ (${r})`)
+    else if (r === '') console.log('[ridesync] ⚠ Mappls didn’t accept MAPPLS_KEY for routing — copy the REST API key again from apis.mappls.com and run setup.bat (trip times still use TomTom/Ola).')
+  })
   void checkTomTom().then((r) => {
     if (r === 'ok') console.log('[ridesync] Live traffic (TomTom) works ✓')
     if (r === 'rejected') console.log('[ridesync] ⚠ TomTom rejected TOMTOM_KEY — routes use OSRM without live traffic. Copy the key again from developer.tomtom.com and run setup.bat.')
     if (r === 'none') console.log('[ridesync] Live traffic off — add a free TomTom key with setup.bat (see README "Live traffic")')
   })
-  console.log(`[ridesync] trip times (live traffic): ${[env.google.key && 'Google', env.tomtomKey && 'TomTom', env.olaKey && 'Ola Maps'].filter(Boolean).join(' + ') || 'none — add a TomTom or Ola Maps key with setup.bat'}${process.env.CITY_SPEED_FLOOR === 'on' ? ' + city-speed minimum' : ''}`)
+  console.log(`[ridesync] trip times (live traffic): ${[env.google.key && 'Google', env.tomtomKey && 'TomTom', env.olaKey && 'Ola Maps', env.mapplsKey && 'Mappls'].filter(Boolean).join(' + ') || 'none — add a TomTom, Ola Maps or Mappls key with setup.bat'}${process.env.CITY_SPEED_FLOOR === 'on' ? ' + city-speed minimum' : ''}`)
   console.log(`[ridesync] pin names: ${[env.google.key && 'Google', env.olaKey && 'Ola Maps', env.tomtomKey && 'TomTom places', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
   const g = !!env.google.key
   console.log(

@@ -62,6 +62,8 @@ export const env = {
   tomtomKey: (process.env.TOMTOM_KEY || '').trim(),
   /** Optional: Ola Maps key for Indian building/society names and search (maps.olakrutrim.com). */
   olaKey: (process.env.OLA_MAPS_KEY || '').trim(),
+  /** Optional: Mappls (MapmyIndia) REST key for live Indian traffic in trip times (apis.mappls.com). */
+  mapplsKey: (process.env.MAPPLS_KEY || '').trim(),
   /**
    * Optional: Google Maps Platform. One key turns on Google place search, place names
    * and driving routes (server side) and the Google map (browser side).

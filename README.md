@@ -230,6 +230,7 @@ How to get the key:
 
 - **TomTom** (live traffic)
 - **Ola Maps** (Indian traffic data)
+- **Mappls / MapmyIndia** (`MAPPLS_KEY`, free, no card): Indian live traffic; get the REST API key at apis.mappls.com
 - **Google** (live traffic), if you add a Google key. Google also colours the route with its own traffic data and gives the closest match to the Google Maps app.
 
 For a rough typical-Mumbai-speed minimum on top of that, add `CITY_SPEED_FLOOR=on` to `.env`.

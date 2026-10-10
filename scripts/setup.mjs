@@ -209,6 +209,32 @@ if (await yes('Add Ola Maps (Indian map style on the website, plus the best name
   }
 }
 
+/* ---- Mappls (MapmyIndia) live traffic -------------------------------------------- */
+if (await yes('Add Mappls / MapmyIndia (free live Indian traffic for trip times)?')) {
+  console.log('\n  apis.mappls.com → sign in → your project/app → copy the REST API key.\n')
+  const mk = (await ask('Mappls REST API key', env.get('MAPPLS_KEY'))).trim()
+  if (mk) {
+    env.set('MAPPLS_KEY', mk)
+    save()
+    process.stdout.write('  Checking key… ')
+    let ok = ''
+    for (const r of ['route_traffic', 'route_eta', 'route_adv']) {
+      try {
+        const res = await fetch(`https://apis.mappls.com/advancedmaps/v1/${encodeURIComponent(mk)}/${r}/driving/72.8711,19.0222;72.8562,19.0176?overview=false`)
+        const j = res.ok ? await res.json() : null
+        const d = j?.routes?.[0]?.duration
+        if (d) {
+          ok = `works ✓ (${r}: VIT → Dadar right now ${Math.round(d / 60)} min)`
+          break
+        }
+      } catch {
+        /* try the next one */
+      }
+    }
+    console.log(ok ? `${ok}\n` : 'Mappls didn’t accept the key for routing. Copy the REST API key again (some accounts need approval first).\n')
+  }
+}
+
 /* ---- Live traffic ------------------------------------------------------------ */
 if (await yes('Add live traffic (free TomTom key — real traffic in ETAs, routes and on the map)?')) {
   console.log('\n  developer.tomtom.com → Register (free, no card) → Dashboard → Keys → copy the default key ("My first API key").\n')
