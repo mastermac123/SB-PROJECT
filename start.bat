@@ -1,6 +1,12 @@
 @echo off
 title RideSync AI
 cd /d "%~dp0"
+echo.
+echo   Running from: %CD%
+if /i not "%CD%"=="%USERPROFILE%\SB-PROJECT" (
+  echo   WARNING: this is NOT the main copy. Use the one in %USERPROFILE%\SB-PROJECT
+  echo   and delete or rename this older folder, or your settings and updates will not match.
+)
 where node >nul 2>nul || (echo. & echo   Node.js is not installed. Get the LTS version from https://nodejs.org & echo. & pause & exit /b 1)
 if not exist node_modules (
   echo Installing RideSync for the first time. This takes a minute...
