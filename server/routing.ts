@@ -1,5 +1,6 @@
 import { haversineKm, polylineLengthKm, ROAD_CIRCUITY, syntheticRoute } from '../src/lib/geo'
 import type { LatLng } from '../src/lib/types'
+import { bandOf, dayOf, factorFor, type Band, type Day } from './calibrate'
 import { all } from './db'
 import { env } from './env'
 import { googleConfigured, googleRoute } from './google'
@@ -70,18 +71,6 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
   }
 }
 
-type Band = 'rush' | 'day' | 'evening' | 'night'
-type Day = 'weekday' | 'saturday' | 'sunday'
-const ist = (when: Date, part: 'hour' | 'weekday') =>
-  new Intl.DateTimeFormat('en-GB', part === 'hour' ? { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' } : { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(when)
-const bandOf = (when: Date): Band => {
-  const h = Number(ist(when, 'hour'))
-  return (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 'rush' : h >= 11 && h < 17 ? 'day' : h >= 21 && h < 23 ? 'evening' : 'night'
-}
-const dayOf = (when: Date): Day => {
-  const d = ist(when, 'weekday')
-  return d === 'Sun' ? 'sunday' : d === 'Sat' ? 'saturday' : 'weekday'
-}
 /**
  * Typical Mumbai door-to-door car speeds (km/h) — close to what Google Maps shows for city trips.
  * Weekends are lighter: Sunday has no office rush at all.
@@ -142,31 +131,42 @@ export function cityFloorMin(distanceKm: number, when = new Date()): number {
   return Math.round((distanceKm / kmh) * 60 + 2)
 }
 
-const olaCache = new Map<string, { at: number; min: number | null; mappls: boolean }>()
+const olaCache = new Map<string, { at: number; ola: number | null; mappls: { min: number; live: boolean } | null }>()
 
 /** Take the slowest of the live-traffic sources: the route service (Google or TomTom), Ola Maps and Mappls. */
 async function realistic(route: Route, a: LatLng, b: LatLng, departAt?: Date): Promise<Route> {
   const when = departAt && departAt.getTime() > Date.now() ? departAt : new Date()
-  let olaMin: number | null = null
-  let liveIndian = false
+  let ola: number | null = null
+  let mappls: { min: number; live: boolean } | null = null
   // Ola and Mappls reflect traffic now, so only use them for trips starting within the hour.
   if (when.getTime() - Date.now() < 3600_000) {
     const k = `${key(a, b)}|${Math.floor(Date.now() / 120_000)}`
     const hit = olaCache.get(k)
-    if (hit) ({ min: olaMin, mappls: liveIndian } = hit)
+    if (hit) ({ ola, mappls } = hit)
     else {
-      const [ola, mappls] = await Promise.all([olaDirections(a, b), mapplsDirections(a, b)])
-      olaMin = Math.max(ola?.durationMin ?? 0, mappls?.durationMin ?? 0) || null
-      liveIndian = !!mappls
+      const [o, m] = await Promise.all([olaDirections(a, b), mapplsDirections(a, b)])
+      ola = o?.durationMin ?? null
+      mappls = m ? { min: m.durationMin, live: !!m.live } : null
       if (olaCache.size > 1000) olaCache.clear()
-      olaCache.set(k, { at: Date.now(), min: olaMin, mappls: liveIndian })
+      olaCache.set(k, { at: Date.now(), ola, mappls })
     }
   }
-  // Mappls has real live Indian traffic: when it answers, trust it instead of the typical-speed rule.
-  const best = Math.max(route.durationMin, olaMin ?? 0, liveIndian ? 0 : cityFloorMin(route.distanceKm, when))
-  if (best <= route.durationMin) return route
+  // Each source corrected by how it has compared with real RideSync trips at this day/time.
+  const fix = (src: 'tomtom' | 'ola' | 'mappls', min: number | null) => {
+    if (!min) return { min: 0, calibrated: false }
+    const f = factorFor(src, when)
+    return { min: Math.round(min * (f ?? 1)), calibrated: f !== null }
+  }
+  const tt = fix('tomtom', route.source === 'tomtom' ? route.durationMin : null)
+  const ol = fix('ola', ola)
+  const mp = fix('mappls', mappls?.min ?? null)
+  // Until real trips have calibrated a source (or Mappls answers with live traffic), never go
+  // faster than typical Mumbai speeds for the hour.
+  const trusted = tt.calibrated || ol.calibrated || mp.calibrated || !!mappls?.live
+  const best = Math.max(route.source === 'tomtom' ? tt.min : route.durationMin, ol.min, mp.min, trusted ? 0 : cityFloorMin(route.distanceKm, when))
+  if (best === route.durationMin) return route
   const freeFlow = Math.max(1, route.durationMin - (route.trafficDelayMin ?? 0))
-  const delay = best - freeFlow
+  const delay = Math.max(0, best - freeFlow)
   return { ...route, durationMin: best, trafficDelayMin: delay, traffic: trafficLevel(delay, freeFlow) }
 }
 

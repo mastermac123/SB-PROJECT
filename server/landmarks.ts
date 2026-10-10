@@ -130,15 +130,18 @@ export async function olaDirections(a: { lat: number; lng: number }, b: { lat: n
   if (!olaReady()) return null
   try {
     const res = await olaFetch(
-      `https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=full&traffic_metadata=false`,
+      `https://api.olamaps.io/routing/v1/directions?origin=${a.lat},${a.lng}&destination=${b.lat},${b.lng}&mode=driving&alternatives=false&steps=false&overview=full&traffic_metadata=true`,
       { method: 'POST' },
     )
     if (!res.ok) throw new Error(`ola directions ${res.status}`)
-    const j = (await res.json()) as { routes?: { overview_polyline?: string; legs?: { duration?: number | { value?: number }; distance?: number | { value?: number } }[] }[] }
+    const j = (await res.json()) as {
+      routes?: { overview_polyline?: string; legs?: { duration?: number | { value?: number }; duration_in_traffic?: number | { value?: number }; distance?: number | { value?: number } }[] }[]
+    }
     const r = j.routes?.[0]
     const legs = r?.legs ?? []
     const num = (v: number | { value?: number } | undefined) => (typeof v === 'number' ? v : (v?.value ?? 0))
-    const seconds = legs.reduce((t, l) => t + num(l.duration), 0)
+    // With traffic metadata Ola may also send the time in current traffic; use whichever is longer.
+    const seconds = legs.reduce((t, l) => t + Math.max(num(l.duration), num(l.duration_in_traffic)), 0)
     const meters = legs.reduce((t, l) => t + num(l.distance), 0)
     if (!seconds || !meters) return null
     let coords: { lat: number; lng: number }[] = []

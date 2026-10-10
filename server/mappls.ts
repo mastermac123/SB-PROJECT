@@ -58,11 +58,11 @@ async function ask(way: Way, resource: string, a: P, b: P) {
 }
 
 let pausedUntil = 0
-export async function mapplsDirections(a: P, b: P): Promise<{ durationMin: number; distanceKm: number } | null> {
+export async function mapplsDirections(a: P, b: P): Promise<{ durationMin: number; distanceKm: number; live?: boolean } | null> {
   if (!mapplsConfigured() || Date.now() < pausedUntil) return null
   if (working) {
     try {
-      return await ask(working.way, working.resource, a, b)
+      return { ...(await ask(working.way, working.resource, a, b)), live: working.resource === 'route_traffic' }
     } catch (e) {
       console.error('[ridesync] Mappls routing failed', (e as Error).message)
       working = null
@@ -74,7 +74,7 @@ export async function mapplsDirections(a: P, b: P): Promise<{ durationMin: numbe
       try {
         const r = await ask(way, resource, a, b)
         working = { way, resource }
-        return r
+        return { ...r, live: resource === 'route_traffic' }
       } catch {
         /* try the next */
       }

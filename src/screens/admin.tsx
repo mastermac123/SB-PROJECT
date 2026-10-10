@@ -16,6 +16,7 @@ type Stats = {
   bookings: { total: number; pending: number; upcoming: number; live: number; completed: number; cancelled: number; cancelledByRider: number; cancelledByDriver: number; declined: number; expired: number; sharedTrips: number }
   money: { fares: number; online: number; walletTopups: number; refunds: number; co2Kg: number }
   daily: { day: string; offered: number; booked: number; completed: number; cancelled: number }[]
+  eta?: { trips: number; shownErrorMin: number | null; tomtomErrorMin: number | null; olaErrorMin: number | null; mapplsErrorMin: number | null }
 }
 type AdminRide = {
   id: string
@@ -184,6 +185,19 @@ function Overview({ q }: { q: ReturnType<typeof useQuery<Stats>> }) {
           <Row label="Wallet top-ups" value={money(s.money.walletTopups)} />
           <Row label="Refunds" value={s.money.refunds} />
           <Row label="CO₂ saved" value={`${s.money.co2Kg} kg`} />
+        </Group>
+        <Group title="Trip-time accuracy">
+          {!s.eta?.trips ? (
+            <p className="t-sm t-muted">Shows how close RideSync’s trip times were to the real pickup→drop time, once trips are completed. RideSync uses these trips to correct TomTom, Ola and Mappls automatically.</p>
+          ) : (
+            <>
+              <Row label="Trips measured" value={s.eta.trips} />
+              <Row label="RideSync off by (avg)" value={s.eta.shownErrorMin === null ? '—' : `${s.eta.shownErrorMin} min`} accent />
+              <Row label="TomTom alone" value={s.eta.tomtomErrorMin === null ? '—' : `${s.eta.tomtomErrorMin} min`} />
+              <Row label="Ola alone" value={s.eta.olaErrorMin === null ? '—' : `${s.eta.olaErrorMin} min`} />
+              <Row label="Mappls alone" value={s.eta.mapplsErrorMin === null ? '—' : `${s.eta.mapplsErrorMin} min`} />
+            </>
+          )}
         </Group>
       </div>
     </div>

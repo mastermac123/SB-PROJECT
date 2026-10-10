@@ -8,6 +8,7 @@ import type {
   DriverLocation,
   MatchResult,
   PaymentRecord,
+  Place,
   RideDetail,
   SearchQuery,
   SharedTrip,
@@ -41,6 +42,7 @@ import {
   vehicleFor,
 } from './logic'
 import { getRoute } from './routing'
+import { accuracy, recordDrop, recordPickup } from './calibrate'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -1103,12 +1105,21 @@ api.post(
     const { b, role } = bookingAccess(param(req, 'id'), meId(req))
     if (role === 'driver' && b.ride_pin) checkPin(b, pin ?? '')
     driverStep(req, ['driver_arriving', 'driver_arrived'], 'in_progress', 'picked_up_at')
+    // Note what each traffic source predicts now; compared with the real time at drop-off.
+    const from = JSON.parse(String(b.pickup)) as Place
+    const to = JSON.parse(String(b.drop_place)) as Place
+    void getRoute(from, to)
+      .then((r) => recordPickup(String(b.id), from, to, r.durationMin))
+      .catch(() => {})
   }),
 )
 api.post(
   '/bookings/:id/dropped',
   requireOnboarded,
-  h((req) => driverStep(req, ['in_progress'], 'completed', 'dropped_at', (n) => ['You’ve arrived', `How was your ride with ${n}? Tap to rate.`])),
+  h((req) => {
+    driverStep(req, ['in_progress'], 'completed', 'dropped_at', (n) => ['You’ve arrived', `How was your ride with ${n}? Tap to rate.`])
+    recordDrop(param(req, 'id'))
+  }),
 )
 
 api.post(
@@ -1507,6 +1518,7 @@ api.get(
         refunds: count(`SELECT COUNT(*) n FROM bookings WHERE payment_status = 'refunded'`),
         co2Kg: Math.round(count(`SELECT COALESCE(SUM(seats), 0) n FROM bookings WHERE status = 'completed'`) * 2.4),
       },
+      eta: accuracy(),
       daily: days.map((d) => ({ day: d, offered: offered[d] ?? 0, booked: booked[d] ?? 0, completed: completed[d] ?? 0, cancelled: cancelled[d] ?? 0 })),
     }
   }),

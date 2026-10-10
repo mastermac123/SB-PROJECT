@@ -25,7 +25,15 @@ export function trafficLevel(delayMin: number, freeFlowMin: number): TrafficLeve
 }
 
 type TTRoute = {
-  summary: { lengthInMeters: number; travelTimeInSeconds: number; trafficDelayInSeconds?: number; noTrafficTravelTimeInSeconds?: number }
+  summary: {
+    lengthInMeters: number
+    travelTimeInSeconds: number
+    trafficDelayInSeconds?: number
+    noTrafficTravelTimeInSeconds?: number
+    /** With computeTravelTimeFor=all: typical traffic for this weekday/hour, and live incidents only. */
+    historicTrafficTravelTimeInSeconds?: number
+    liveTrafficIncidentsTravelTimeInSeconds?: number
+  }
   legs: { points: { latitude: number; longitude: number }[] }[]
   sections?: { sectionType?: string; startPointIndex: number; endPointIndex: number; magnitudeOfDelay?: number; simpleCategory?: string }[]
 }
@@ -51,9 +59,13 @@ export async function tomtomRoute(a: LatLng, b: LatLng, departAt?: Date) {
     if (!res.ok) throw new Error(`tomtom ${res.status}`)
     const r = ((await res.json()) as { routes?: TTRoute[] }).routes?.[0]
     if (!r) throw new Error('tomtom: no route')
-    const durationMin = Math.max(1, Math.round(r.summary.travelTimeInSeconds / 60))
-    const freeFlowMin = Math.round((r.summary.noTrafficTravelTimeInSeconds ?? r.summary.travelTimeInSeconds) / 60)
-    const trafficDelayMin = Math.max(0, Math.round((r.summary.trafficDelayInSeconds ?? (r.summary.travelTimeInSeconds - (r.summary.noTrafficTravelTimeInSeconds ?? r.summary.travelTimeInSeconds))) / 60))
+    // TomTom's live feed is thin on many Mumbai roads, while its history for the same weekday and
+    // hour already knows the usual rush. Take the slowest of live, typical and incidents.
+    const s = r.summary
+    const seconds = Math.max(s.travelTimeInSeconds, s.historicTrafficTravelTimeInSeconds ?? 0, s.liveTrafficIncidentsTravelTimeInSeconds ?? 0)
+    const durationMin = Math.max(1, Math.round(seconds / 60))
+    const freeFlowMin = Math.round((s.noTrafficTravelTimeInSeconds ?? s.travelTimeInSeconds) / 60)
+    const trafficDelayMin = Math.max(0, Math.round((seconds - (s.noTrafficTravelTimeInSeconds ?? s.travelTimeInSeconds)) / 60), Math.round((s.trafficDelayInSeconds ?? 0) / 60))
     const segments: TrafficSegment[] = []
     for (const sec of r.sections ?? []) {
       if (sec.sectionType !== 'TRAFFIC') continue
