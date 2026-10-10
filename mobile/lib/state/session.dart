@@ -12,7 +12,10 @@ import '../api/models.dart';
 ///   flutter build apk --dart-define=RIDESYNC_SERVER_URL=https://your-server
 const builtInServer = String.fromEnvironment('RIDESYNC_SERVER_URL');
 
-enum SessionStatus { loading, needsServer, signedOut, needsOnboarding, ready }
+enum SessionStatus { loading, needsServer, signedOut, needsOnboarding, ready, admin }
+
+/// Where a signed-in user lands: admin-only accounts get the admin dashboard, never the student app.
+SessionStatus statusFor(User u) => u.adminOnly ? SessionStatus.admin : (u.onboarded ? SessionStatus.ready : SessionStatus.needsOnboarding);
 
 String normalizeServer(String raw) {
   var s = raw.trim();
@@ -127,12 +130,12 @@ class Session extends ChangeNotifier {
   void _afterSignIn() {
     events?.dispose();
     events = LiveEvents(baseUrl: api.baseUrl, token: api.token!)..start();
-    _set(user!.onboarded ? SessionStatus.ready : SessionStatus.needsOnboarding);
+    _set(statusFor(user!));
   }
 
   void setUser(User u) {
     user = u;
-    _set(u.onboarded ? SessionStatus.ready : SessionStatus.needsOnboarding);
+    _set(statusFor(u));
   }
 
   Future<void> reloadUser() async {

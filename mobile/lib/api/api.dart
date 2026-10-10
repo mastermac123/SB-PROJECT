@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'admin_models.dart';
 import 'models.dart';
 
 /// A failed request, with the server's message ready to show to the student.
@@ -193,6 +194,18 @@ class Api {
     final m = _map(await get('/badges'));
     return (unread: (m['unread'] as num?)?.toInt() ?? 0, requests: (m['requests'] as num?)?.toInt() ?? 0);
   }
+
+  /* ---- Admin dashboard (admins only) ---- */
+
+  Future<AdminStats> adminStats() async => AdminStats.fromJson(_map(await get('/admin/stats')));
+
+  /// [status]: scheduled | in_progress | completed | cancelled, or null for all.
+  Future<List<AdminRide>> adminRides([String? status]) async =>
+      _list(await get('/admin/rides', status == null || status.isEmpty ? null : {'status': status})).map(AdminRide.fromJson).toList();
+  Future<List<AdminUser>> adminUsers([String q = '']) async => _list(await get('/admin/users', q.trim().isEmpty ? null : {'q': q.trim()})).map(AdminUser.fromJson).toList();
+  Future<List<IdCardReview>> adminIdCards() async => _list(await get('/admin/id-cards')).map(IdCardReview.fromJson).toList();
+  Future<void> reviewIdCard(String userId, bool approve, [String? note]) =>
+      post('/admin/id-cards/$userId', {'approve': approve, if (!approve && note != null && note.isNotEmpty) 'note': note});
 
   /// Checks an address answers like a RideSync server.
   static Future<bool> probe(String baseUrl) async {

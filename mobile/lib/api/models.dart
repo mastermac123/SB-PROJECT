@@ -129,6 +129,9 @@ class User extends PublicUser {
   final String? idNote;
   final bool isAdmin;
 
+  /// An admin whose email isn't a college address: the server only lets them use the admin dashboard.
+  final bool adminOnly;
+
   User.fromJson(Map<String, dynamic> j)
       : email = _s(j['email']),
         phone = _s(j['phone']),
@@ -143,7 +146,8 @@ class User extends PublicUser {
         co2SavedKg = _d(j['co2SavedKg']),
         idStatus = _s(j['idStatus']).isEmpty ? (j['verified'] == true ? 'verified' : 'none') : _s(j['idStatus']),
         idNote = _ns(j['idNote']),
-        isAdmin = j['isAdmin'] == true,
+        isAdmin = j['isAdmin'] == true || j['adminOnly'] == true,
+        adminOnly = j['adminOnly'] == true,
         super(
           id: _s(j['id']),
           name: _s(j['name']),

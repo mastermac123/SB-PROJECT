@@ -175,7 +175,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _code = TextEditingController();
   bool _landing = true;
   bool _signup = false;
+  /// Admin sign-in: any email (e.g. a Gmail listed in ADMIN_EMAILS), same code flow.
+  bool _admin = false;
   void _openLogin() => setState(() => (_landing = false, _signup = false));
+  void _setAdmin(bool on) => setState(() => (_admin = on, _landing = false, _signup = false, _error = null));
   void _openSignup() => setState(() => (_landing = false, _signup = true));
   bool _codeStep = false;
   bool _busy = false;
@@ -206,8 +209,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _validateEmail() {
     final e = _cleanEmail;
-    if (e.isEmpty) return 'Enter your college email.';
+    if (e.isEmpty) return _admin ? 'Enter your admin email.' : 'Enter your college email.';
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e)) return 'Enter a valid email address.';
+    if (_admin) return null;
     if (!e.endsWith('@$_domain')) return 'Use your @$_domain college email. RideSync is only for VIT students.';
     return null;
   }
@@ -263,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_codeStep) {
       return _AuthFrame(
         overline: 'Almost there',
-        title: 'Check your VIT inbox',
+        title: _admin ? 'Check your inbox' : 'Check your VIT inbox',
         subtitle: cfg?.codesInTerminal == true
             ? 'Email isn’t set up on this server yet, so the 6-digit code for $_cleanEmail is shown in the black RideSync window on the laptop.'
             : 'We sent a 6-digit code to $_cleanEmail. It can take a minute — check Junk too.',
@@ -289,10 +293,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
     return _AuthFrame(
-      overline: _signup ? 'Join RideSync' : 'Welcome back',
-      title: _signup ? 'Create your account' : 'Log in to RideSync',
-      subtitle: 'Your campus. Your route. Your ride.',
-      onBack: () => setState(() => (_landing = true, _error = null)),
+      overline: _admin ? 'RideSync admin' : (_signup ? 'Join RideSync' : 'Welcome back'),
+      title: _admin ? 'Admin sign in' : (_signup ? 'Create your account' : 'Log in to RideSync'),
+      subtitle: _admin ? 'See rides, bookings and students, and check ID cards. We’ll email a 6-digit code.' : 'Your campus. Your route. Your ride.',
+      onBack: () => setState(() => (_landing = true, _admin = false, _error = null)),
       children: [
         if (session.startupError != null) ...[
           Notice('Can’t reach the RideSync server: ${session.startupError}', tone: 'error'),
@@ -306,18 +310,20 @@ class _LoginScreenState extends State<LoginScreen> {
           keyboardType: TextInputType.emailAddress,
           autocorrect: false,
           textInputAction: TextInputAction.go,
-          decoration: InputDecoration(labelText: 'VIT email', hintText: 'firstname.lastname@$_domain', prefixIcon: const Icon(Icons.mail_outline)),
+          decoration: _admin
+              ? const InputDecoration(labelText: 'Admin email', hintText: 'admin@example.com', prefixIcon: Icon(Icons.admin_panel_settings_outlined))
+              : InputDecoration(labelText: 'VIT email', hintText: 'firstname.lastname@$_domain', prefixIcon: const Icon(Icons.mail_outline)),
           onSubmitted: (_) => _sendCode(),
         ),
         const SizedBox(height: 12),
-        LoadingButton(label: _signup ? 'Create account' : 'Continue', icon: Icons.arrow_forward, loading: _busy, onPressed: cfg?.emailLogin == false ? null : _sendCode),
+        LoadingButton(label: _signup && !_admin ? 'Create account' : 'Continue', icon: Icons.arrow_forward, loading: _busy, onPressed: cfg?.emailLogin == false ? null : _sendCode),
         const SizedBox(height: 10),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Icon(Icons.verified_user_outlined, size: 16, color: RS.ink500),
           const SizedBox(width: 8),
-          Expanded(child: Text('No password to remember. We email a 6-digit code to your @$_domain inbox each time you sign in.', style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4))),
+          Expanded(child: Text(_admin ? 'No password to remember. We email a 6-digit code to your admin inbox each time you sign in.' : 'No password to remember. We email a 6-digit code to your @$_domain inbox each time you sign in.', style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4))),
         ]),
-        if (cfg?.microsoftLogin == true) ...[
+        if (cfg?.microsoftLogin == true && !_admin) ...[
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 18),
             child: Row(children: [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('or', style: TextStyle(color: RS.ink500, fontSize: 13))), Expanded(child: Divider())]),
@@ -348,14 +354,25 @@ class _LoginScreenState extends State<LoginScreen> {
           LoadingButton(label: 'Test sign-in (no code)', secondary: true, loading: _busy, onPressed: _devLogin),
         ],
         const SizedBox(height: 28),
+        if (!_admin)
+          Center(
+            child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(_signup ? 'Already on RideSync? ' : 'New to RideSync? ', style: const TextStyle(color: RS.ink500)),
+              GestureDetector(
+                onTap: () => setState(() => _signup = !_signup),
+                child: Text(_signup ? 'Log in' : 'Create account', style: const TextStyle(color: RS.primary, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
+        const SizedBox(height: 8),
         Center(
-          child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-            Text(_signup ? 'Already on RideSync? ' : 'New to RideSync? ', style: const TextStyle(color: RS.ink500)),
-            GestureDetector(
-              onTap: () => setState(() => _signup = !_signup),
-              child: Text(_signup ? 'Log in' : 'Create account', style: const TextStyle(color: RS.primary, fontWeight: FontWeight.w700)),
-            ),
-          ]),
+          child: _admin
+              ? TextButton.icon(onPressed: _busy ? null : () => _setAdmin(false), icon: const Icon(Icons.school_outlined, size: 18), label: const Text('Student sign in'))
+              : TextButton(
+                  onPressed: _busy ? null : () => _setAdmin(true),
+                  style: TextButton.styleFrom(foregroundColor: RS.ink500, textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  child: const Text('RideSync admin? Sign in here'),
+                ),
         ),
         if (!session.hasBuiltInServer) ...[
           const SizedBox(height: 12),
@@ -403,6 +420,14 @@ extension on _LoginScreenState {
             LoadingButton(label: 'Log in', secondary: true, onPressed: _openLogin),
             const SizedBox(height: 10),
             Text('Sign in with your @$_domain email.', textAlign: TextAlign.center, style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+            const SizedBox(height: 4),
+            Center(
+              child: TextButton(
+                onPressed: () => _setAdmin(true),
+                style: TextButton.styleFrom(foregroundColor: RS.ink500, textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                child: const Text('RideSync admin? Sign in here'),
+              ),
+            ),
           ]),
         ),
       );

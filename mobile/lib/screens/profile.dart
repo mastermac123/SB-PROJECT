@@ -14,6 +14,7 @@ import '../widgets/motion.dart';
 import '../widgets/photo_picker.dart';
 import '../widgets/safety.dart';
 import '../widgets/vehicle_form.dart';
+import 'admin.dart';
 import 'drive.dart';
 import 'trip.dart';
 
@@ -72,6 +73,7 @@ class ProfileTab extends StatelessWidget {
           ]),
           const SectionTitle('App'),
           _group([
+            if (u.isAdmin && !u.adminOnly) _row(Icons.admin_panel_settings_outlined, 'Admin dashboard', 'Rides, students and ID checks', () => open(const AdminShell(embedded: true))),
             _row(Icons.help_outline_rounded, 'Help & support', 'FAQ and how RideSync works', () => open(const HelpScreen())),
             if (!session.hasBuiltInServer) _row(Icons.dns_outlined, 'Change server', session.server, () => session.changeServer()),
             _row(Icons.logout, 'Log out', null, () => session.signOut()),
