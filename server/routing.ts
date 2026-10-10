@@ -71,26 +71,37 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
 }
 
 type Band = 'rush' | 'day' | 'evening' | 'night'
+type Day = 'weekday' | 'saturday' | 'sunday'
+const ist = (when: Date, part: 'hour' | 'weekday') =>
+  new Intl.DateTimeFormat('en-GB', part === 'hour' ? { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' } : { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(when)
 const bandOf = (when: Date): Band => {
-  const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(when))
+  const h = Number(ist(when, 'hour'))
   return (h >= 8 && h < 11) || (h >= 17 && h < 21) ? 'rush' : h >= 11 && h < 17 ? 'day' : h >= 21 && h < 23 ? 'evening' : 'night'
 }
-/** Typical Mumbai door-to-door car speeds (km/h) — what Google Maps usually shows for city trips. */
-const MUMBAI_KMH: Record<Band, number> = { rush: 17, day: 20, evening: 24, night: 32 }
-
-let learned: { at: number; kmh: Partial<Record<Band, number>> } = { at: 0, kmh: {} }
+const dayOf = (when: Date): Day => {
+  const d = ist(when, 'weekday')
+  return d === 'Sun' ? 'sunday' : d === 'Sat' ? 'saturday' : 'weekday'
+}
 /**
- * Real speeds from RideSync's own completed trips (pickup → drop times), per time of day, from the
- * last 60 days. Needs at least 5 trips in a band; until then the Mumbai typical speed is used.
+ * Typical Mumbai door-to-door car speeds (km/h) — close to what Google Maps shows for city trips.
+ * Weekends are lighter: Sunday has no office rush at all.
  */
+const MUMBAI_KMH: Record<Day, Record<Band, number>> = {
+  weekday: { rush: 17, day: 20, evening: 24, night: 32 },
+  saturday: { rush: 20, day: 21, evening: 24, night: 32 },
+  sunday: { rush: 24, day: 24, evening: 26, night: 34 },
+}
+
+type Slot = `${Day}:${Band}`
+let learned: { at: number; kmh: Partial<Record<Slot, number>> } = { at: 0, kmh: {} }
 /** Test hook. */
 export const resetLearnedSpeeds = () => {
   learned = { at: 0, kmh: {} }
 }
 
-export function learnedSpeeds(): Partial<Record<Band, number>> {
+export function learnedSpeeds(): Partial<Record<Slot, number>> {
   if (Date.now() - learned.at < 10 * 60_000) return learned.kmh
-  const by: Record<Band, number[]> = { rush: [], day: [], evening: [], night: [] }
+  const by: Partial<Record<Slot, number[]>> = {}
   try {
     const rows = all<{ pickup: string; drop_place: string; picked_up_at: string; dropped_at: string }>(
       `SELECT pickup, drop_place, picked_up_at, dropped_at FROM bookings WHERE status = 'completed' AND picked_up_at IS NOT NULL AND dropped_at IS NOT NULL AND dropped_at >= ?`,
@@ -102,14 +113,15 @@ export function learnedSpeeds(): Partial<Record<Band, number>> {
       const min = (new Date(r.dropped_at).getTime() - new Date(r.picked_up_at).getTime()) / 60_000
       const km = haversineKm(a, b) * ROAD_CIRCUITY
       if (km < 2 || min < 4 || min > 180) continue
-      by[bandOf(new Date(r.picked_up_at))].push(km / (min / 60))
+      const at = new Date(r.picked_up_at)
+      ;(by[`${dayOf(at)}:${bandOf(at)}`] ??= []).push(km / (min / 60))
     }
   } catch {
     /* database not ready */
   }
-  const kmh: Partial<Record<Band, number>> = {}
-  for (const k of Object.keys(by) as Band[]) {
-    const v = by[k].sort((x, y) => x - y)
+  const kmh: Partial<Record<Slot, number>> = {}
+  for (const k of Object.keys(by) as Slot[]) {
+    const v = by[k]!.sort((x, y) => x - y)
     if (v.length >= 5) kmh[k] = Math.min(45, Math.max(8, v[Math.floor(v.length / 2)]))
   }
   learned = { at: Date.now(), kmh }
@@ -124,8 +136,9 @@ export function learnedSpeeds(): Partial<Record<Band, number>> {
  */
 export function cityFloorMin(distanceKm: number, when = new Date()): number {
   if (process.env.CITY_SPEED_FLOOR === 'off' || googleConfigured()) return 0
+  const day = dayOf(when)
   const band = bandOf(when)
-  const kmh = learnedSpeeds()[band] ?? MUMBAI_KMH[band]
+  const kmh = learnedSpeeds()[`${day}:${band}`] ?? MUMBAI_KMH[day][band]
   return Math.round((distanceKm / kmh) * 60 + 2)
 }
 

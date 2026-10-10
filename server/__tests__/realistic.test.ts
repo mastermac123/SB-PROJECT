@@ -49,8 +49,19 @@ describe('Realistic Mumbai trip times', () => {
   it('never promises faster than city traffic allows', () => {
     // 3 km: at least ~6 min even at night, ~13 min in the evening rush.
     expect(cityFloorMin(3, new Date('2026-10-10T03:00:00+05:30'))).toBeGreaterThanOrEqual(6)
-    expect(cityFloorMin(3, new Date('2026-10-10T18:30:00+05:30'))).toBe(13)
-    expect(cityFloorMin(3, new Date('2026-10-10T12:00:00+05:30'))).toBe(11)
+    // Thursday 8 Oct 2026: weekday rush and daytime.
+    expect(cityFloorMin(3, new Date('2026-10-08T18:30:00+05:30'))).toBe(13)
+    expect(cityFloorMin(3, new Date('2026-10-08T12:00:00+05:30'))).toBe(11)
+  })
+
+  it('is lighter on weekends and late at night', () => {
+    const km = 15.5 // Andheri → VIT Wadala
+    const thuRush = cityFloorMin(km, new Date('2026-10-08T18:00:00+05:30'))
+    const sunEvening = cityFloorMin(km, new Date('2026-10-11T18:00:00+05:30'))
+    const sunNight = cityFloorMin(km, new Date('2026-10-11T23:30:00+05:30'))
+    expect(thuRush).toBe(57)
+    expect(sunEvening).toBe(41)
+    expect(sunNight).toBe(29)
   })
 })
 
@@ -62,7 +73,7 @@ describe('Learning real speeds from RideSync trips', () => {
     const a = { lat: 19.0222, lng: 72.8711 }
     const b = { lat: 19.0222 + 0.0647, lng: 72.8711 } // ~7.2 km straight → ~10 km by road
     for (let i = 0; i < 5; i++) {
-      const start = new Date(Date.now() - (i + 1) * 86_400_000)
+      const start = new Date(Date.now() - (i + 1) * 7 * 86_400_000) // same weekday each week
       start.setUTCHours(13, 0, 0, 0) // 18:30 IST
       run(`INSERT INTO users (id, email, name, created_at) VALUES (?, ?, 'T', ?) ON CONFLICT DO NOTHING`, 'u_learn', 'learn@vit.edu.in', start.toISOString())
       run(`INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, vehicle_id, route, distance_km, duration_min, status, created_at) VALUES (?, 'u_learn', '{}', '{}', ?, 3, 50, 2, 'v', '[]', 10, 20, 'completed', ?)`, `r_l${i}`, start.toISOString(), start.toISOString())
@@ -72,7 +83,9 @@ describe('Learning real speeds from RideSync trips', () => {
       )
     }
     resetLearnedSpeeds()
-    const kmh = learnedSpeeds().rush!
+    // 18:30 IST on days before today: check the slots that got trips.
+    const all = Object.values(learnedSpeeds())
+    const kmh = Math.max(...all)
     expect(kmh).toBeGreaterThan(9)
     expect(kmh).toBeLessThan(15)
   })
